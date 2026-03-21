@@ -1,0 +1,11 @@
+{
+    "luau-lsp.require.mode": "relativeToFile",
+    "luau-lsp.require.directoryAliases": {
+        "@Packages": "./Packages",
+        "@ServerPackages": "./ServerPackages"
+    },
+    "luau-lsp.sourcemap.enabled": true,
+    "luau-lsp.sourcemap.sourcemapFile": "./sourcemap.json",
+    "luau-lsp.sourcemap.autogenerate": true,
+    "luau-lsp.sourcemap.rojoProjectFile": "./default.project.json"
+}

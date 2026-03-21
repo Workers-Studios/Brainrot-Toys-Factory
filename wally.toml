@@ -6,7 +6,7 @@ realm = "shared"
 
 [dependencies]
 Promise = "evaera/promise@4.0.0"
-networker = "leifstout/networker@0.3.1"
+Networker = "leifstout/networker@0.3.1"
 
 [server-dependencies]
 Profileservice = "firebird702/profileservice@1.1.0"
