@@ -1,32 +1,31 @@
 {
-  "name": "Brainrot-Toys-Factory",
+  "name": "Brainrot Toys Factory",
   "tree": {
     "$className": "DataModel",
 
-    "ReplicatedStorage": {
-      "Shared": {
-        "$path": "src/shared"
-      },
-      "Packages": {
-        "$path": "Packages"
-      }
+    "ServerScriptService": {
+      "$path": "src/server"
     },
 
-    "ServerScriptService": {
-      "Server": {
-        "$path": "src/server"
-      },
-      "ServerPackages": {
-        "$path": "ServerPackages"
-      }
+    "ServerStorage": {
+      "$path": "src/server-storage"
     },
 
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client"
-        }
+        "$path": "src/client"
+      },
+      "StarterCharacterScripts": {
+        "$path": "src/character"
       }
+    },
+
+    "StarterGui": {
+      "$path": "src/gui"
+    },
+
+    "Workspace": {
+      "$path": "src/workspace"
     }
   }
 }

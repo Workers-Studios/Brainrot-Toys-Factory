@@ -1,0 +1,206 @@
+--[[
+	Handles player connection and disconnection events
+	Manages player data loading, plot creation, placement restoration, and cleanup
+	
+	Main responsibilities:
+	- Create personal plot for each player
+	- Load player data on join
+	- Teleport player to their plot
+	- Initialize plot slots (spawners, generators, conveyors)
+	- Restore placed spawners and generators from previous session
+	- Stop generators and save data on disconnect
+	- Remove plot on disconnect
+	
+	Connected to: Players.PlayerAdded, Players.PlayerRemoving
+]]
+
+local PlayerLifecycleHandler = {}
+
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Dependencies (required once)
+local PlotService = require(script.Parent.Parent.Services.Core.PlotService)
+local PlacementService = require(script.Parent.Parent.Services.Gameplay.PlacementService)
+local GeneratorPlacementService = require(script.Parent.Parent.Services.Gameplay.GeneratorPlacementService)
+local ConveyorService = require(script.Parent.Parent.Services.Gameplay.ConveyorService)
+local ToyConfig = require(script.Parent.Parent.Config.ToyConfig)
+
+-- Private references
+local _PlayerDataService = nil
+local _GeneratorService = nil
+
+-- Initializes handler and connects to player events
+-- @param PlayerDataService: service - Player data management service
+-- @param GeneratorService: service - Generator management service
+function PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
+	_PlayerDataService = PlayerDataService
+	_GeneratorService = GeneratorService
+
+	Players.PlayerAdded:Connect(PlayerLifecycleHandler.OnPlayerAdded)
+	Players.PlayerRemoving:Connect(PlayerLifecycleHandler.OnPlayerRemoving)
+
+	print("PlayerLifecycleHandler initialized")
+end
+
+-- Handles player join: creates plot, loads data, and restores placements
+-- @param player: Player - Roblox player instance
+function PlayerLifecycleHandler.OnPlayerAdded(player)
+	local userId = player.UserId
+
+	-- ⭐ CREATE PLAYER PLOT
+	local plot = PlotService.CreatePlot(userId)
+	if not plot then
+		player:Kick("Server is full (8/8 players)")
+		return
+	end
+
+	-- ⭐ WAIT FOR PLOT TO BE READY
+	task.wait(0.5)
+
+	-- Load player data from DataStore
+	_PlayerDataService.LoadPlayer(userId)
+
+	-- ⭐ TELEPORT PLAYER TO THEIR PLOT (improved)
+	local function TeleportToPlot(character)
+		task.wait(0.5)  -- Wait for character to load
+
+		-- Try multiple times if needed
+		for attempt = 1, 3 do
+			-- Refresh plot reference
+			local currentPlot = PlotService.GetPlot(userId)
+			if not currentPlot then
+				warn("⚠️ Plot not found for", userId, "attempt", attempt)
+				task.wait(0.5)
+				continue
+			end
+
+			-- Find spawn location
+			local spawnLocation = currentPlot:FindFirstChild("SpawnLocation", true)  -- ⭐ Recursive search
+
+			if spawnLocation and spawnLocation:IsA("BasePart") then
+				-- Teleport above spawn location
+				local spawnCFrame = spawnLocation.CFrame * CFrame.new(0, 5, 0)
+				character:PivotTo(spawnCFrame)
+				print("✅ Player", player.Name, "teleported to plot at", spawnLocation.Position)
+				return  -- Success
+			else
+				warn("⚠️ SpawnLocation not found in plot, attempt", attempt)
+
+				-- Fallback: Use PrimaryPart
+				if currentPlot.PrimaryPart then
+					local fallbackCFrame = currentPlot.PrimaryPart.CFrame * CFrame.new(0, 10, 0)
+					character:PivotTo(fallbackCFrame)
+					warn("⚠️ Used PrimaryPart fallback for", player.Name)
+					return  -- Success with fallback
+				end
+			end
+
+			task.wait(0.5)
+		end
+
+		-- All attempts failed
+		error("❌ Failed to teleport player", player.Name, "after 3 attempts")
+	end
+
+	-- Connect to character spawn
+	player.CharacterAdded:Connect(TeleportToPlot)
+
+	-- Teleport if character already exists
+	if player.Character then
+		task.spawn(function()
+			TeleportToPlot(player.Character)
+		end)
+	end
+
+	-- Sync data to client
+	task.spawn(function()
+		task.wait(0.5)
+
+		local playerData = _PlayerDataService.GetPlayerData(userId)
+		if not playerData then
+			warn("PlayerData not found for", userId)
+			return
+		end
+
+		-- Sync money
+		local OnMoneyChanged = ReplicatedStorage.RemoteInterface.Events.OnMoneyChanged
+		OnMoneyChanged:FireClient(player, playerData.money)
+
+		-- Sync quotas
+		local OnQuotaUpdated = ReplicatedStorage.RemoteInterface.Events.OnQuotaUpdated
+		for toyType, quotas in pairs(playerData.quotaProgress) do
+			for rarity, currentCount in pairs(quotas) do
+				local maxQuota = ToyConfig[toyType].QuotaToGenerator[rarity]
+				OnQuotaUpdated:FireClient(player, toyType, rarity, currentCount, maxQuota)
+			end
+		end
+
+		print("📊 Data synced for", player.Name)
+	end)
+
+	-- Wait for plot to be ready
+	task.wait(1)
+
+	-- ⭐ INITIALIZE PLOT SLOTS
+	local success1, err1 = pcall(function()
+		PlacementService.InitializePlotSlots(userId)
+	end)
+	if not success1 then
+		warn("Error initializing spawner slots:", err1)
+	end
+
+	local success2, err2 = pcall(function()
+		GeneratorPlacementService.InitializePlotSlots(userId)
+	end)
+	if not success2 then
+		warn("Error initializing generator slots:", err2)
+	end
+
+	local success3, err3 = pcall(function()
+		ConveyorService.InitializePlotConveyors(userId)
+	end)
+	if not success3 then
+		warn("Error initializing conveyors:", err3)
+	end
+
+	-- ⭐ RESTORE PLACED SPAWNERS AND GENERATORS
+	local success4, err4 = pcall(function()
+		PlacementService.RestorePlacedSpawners(userId)
+	end)
+	if not success4 then
+		warn("Error restoring spawners:", err4)
+	end
+
+	local success5, err5 = pcall(function()
+		GeneratorPlacementService.RestorePlacedGenerators(userId)
+	end)
+	if not success5 then
+		warn("Error restoring generators:", err5)
+	end
+
+	print("✅ Player connected:", player.Name)
+end
+
+-- Handles player disconnect: stops generators, saves data, and removes plot
+-- @param player: Player - Roblox player instance
+function PlayerLifecycleHandler.OnPlayerRemoving(player)
+	local userId = player.UserId
+
+	-- Stop all active generator loops
+	_GeneratorService.StopAllGenerators(userId)
+
+	-- Save player data to DataStore
+	_PlayerDataService.SavePlayer(userId)
+
+	-- Remove from memory
+	_PlayerDataService.RemovePlayer(userId)
+
+	-- ⭐ REMOVE PLOT
+	PlotService.RemovePlot(userId)
+
+	print("❌ Player disconnected:", player.Name)
+end
+
+return PlayerLifecycleHandler
