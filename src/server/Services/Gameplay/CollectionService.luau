@@ -85,11 +85,9 @@ function CollectionService.OnToyCollected(toy)
 	local MoneyService = require(script.Parent.Parent.Core.MoneyService)
 	MoneyService.AddMoney(userId, sellValue)
 
-	-- Increment quota
-	local playerData = _PlayerDataService.GetPlayerData(userId)
-	if playerData then
-		playerData:IncrementQuota(toyType, toyRarity)
-	end
+	-- Increment quota and check completion
+	CollectionService.IncrementQuota(userId, toyType, toyRarity)
+	CollectionService.CheckQuotaComplete(userId, toyType, toyRarity)
 
 	-- Destroy toy
 	toy:Destroy()

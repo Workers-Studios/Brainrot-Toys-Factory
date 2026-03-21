@@ -51,11 +51,8 @@ function GeneratorService.CreateGenerator(userId, toyType, rarity)
 	local incomeRate = generatorConfig.BaseRevenuePerSecond[rarity]
 	local incomeInterval = 1  -- Generate income every 1 second
 
-	-- Mark generator as active
-	_activeGenerators[userId .. "_" .. generatorType] = true
-
-	-- Start income generation loop
-	GeneratorService.StartGeneratorLoop(userId, generatorType, incomeRate, incomeInterval)
+	-- Start income generation loop (key = userId_generatorType for StopAllGenerators compatibility)
+	GeneratorService.StartGeneratorLoop(userId, userId .. "_" .. generatorType, incomeRate, incomeInterval)
 
 	print("Generator created:", generatorType, "for", userId)
 end
@@ -67,7 +64,7 @@ end
 -- @param incomeInterval: number - Seconds between income generation
 function GeneratorService.StartGeneratorLoop(userId, generatorId, incomeRate, incomeInterval)
 	task.spawn(function()
-		_activeGenerators[generatorId] = true
+		_activeGenerators[generatorId] = true  -- generatorId = "userId_generatorType"
 
 		while _activeGenerators[generatorId] do
 			task.wait(incomeInterval)

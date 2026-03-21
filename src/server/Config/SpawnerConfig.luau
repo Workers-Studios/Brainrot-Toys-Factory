@@ -17,28 +17,12 @@ local SpawnerConfig = {
 		SpawnRate = 5,  -- Spawns a toy every 5 seconds
 		RequiredRebirth = 0,
 		ToyType = "TralaleroTralala",
-		-- Toy rarity drop rates (heavily weighted toward Common)
+		-- Toy rarity drop rates (heavily weighted toward Common, must sum to 1.0)
 		DropRates = {
-			F = 0.85,      -- 85%
-			E = 0.85,      -- 85%
-			D = 0.12,        -- 12%
-			C = 0.025,       -- 2.5%
-			B = 0.005,  -- 0.5%
-			A = 0.005,  -- 0.5%
-			Box_S = {
-				S = 0.005,  -- 0.5%
-				SS = 0.005,  -- 0.5%
-				SSS = 0.005,  -- 0.5%
-			},
-			Box_X = {
-				X = 0.005,  -- 0.5%
-				XX = 0.005,  -- 0.5%
-				XXX = 0.005,  -- 0.5%
-			},
-			Box_Secret = {
-				Secret = 0.005,  -- 0.5%
-				Admin = 0.005,  -- 0.5%
-			}
+			Common = 0.85,     -- 85%
+			Rare = 0.10,       -- 10%
+			Epic = 0.04,       -- 4%
+			Legendary = 0.01,  -- 1%
 		}
 	},
 	Rare = {

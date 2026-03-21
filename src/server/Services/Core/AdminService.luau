@@ -108,6 +108,7 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 			playerData.money = amount
 			local OnMoneyChanged = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnMoneyChanged
 			OnMoneyChanged:FireClient(target, amount)
+			_PlayerDataService.SavePlayer(target.UserId)
 			print(string.format("✅ Admin %s set %s money to %d$", admin.Name, targetName, amount))
 		end
 

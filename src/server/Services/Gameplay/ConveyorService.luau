@@ -71,11 +71,17 @@ function ConveyorService.InitializePlotConveyors(userId)
 				end
 
 				if not hit:FindFirstChild("ConveyorVelocity") then
-					local bodyVelocity = Instance.new("BodyVelocity")
-					bodyVelocity.Name = "ConveyorVelocity"
-					bodyVelocity.Velocity = segment.CFrame.LookVector * 8
-					bodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
-					bodyVelocity.Parent = hit
+					local attachment = Instance.new("Attachment")
+					attachment.Name = "ConveyorAttachment"
+					attachment.Parent = hit
+
+					local linearVelocity = Instance.new("LinearVelocity")
+					linearVelocity.Name = "ConveyorVelocity"
+					linearVelocity.Attachment0 = attachment
+					linearVelocity.VectorVelocity = segment.CFrame.LookVector * 8
+					linearVelocity.MaxForce = 4000
+					linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+					linearVelocity.Parent = hit
 				end
 			end
 		end)
@@ -86,6 +92,10 @@ function ConveyorService.InitializePlotConveyors(userId)
 				local velocity = hit:FindFirstChild("ConveyorVelocity")
 				if velocity then
 					velocity:Destroy()
+				end
+				local attachment = hit:FindFirstChild("ConveyorAttachment")
+				if attachment then
+					attachment:Destroy()
 				end
 			end
 		end)

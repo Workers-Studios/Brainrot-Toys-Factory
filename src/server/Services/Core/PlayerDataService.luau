@@ -30,7 +30,13 @@ end
 -- @return PlayerData - Cached PlayerData instance
 function PlayerDataService.LoadPlayer(userId)
 	local loadedData = _DataService.LoadPlayerData(userId)
-	local playerData = _PlayerData.new(userId, loadedData)
+	local playerData
+
+	if loadedData then
+		playerData = _PlayerData.load(userId, loadedData)
+	else
+		playerData = _PlayerData.new(userId)
+	end
 
 	_playerDataCache[userId] = playerData
 
