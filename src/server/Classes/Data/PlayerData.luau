@@ -106,6 +106,19 @@ function PlayerData:RemoveMoney(amount)
 	return false
 end
 
+-- Returns current money balance
+-- @return number - Current money amount
+function PlayerData:GetMoney()
+	return self.money
+end
+
+-- Alias pour RemoveMoney, utilisé par MoneyService
+-- @param amount: number - Money to deduct
+-- @return boolean - true if successful
+function PlayerData:DeductMoney(amount)
+	return self:RemoveMoney(amount)
+end
+
 -- Checks if player has item in inventory
 -- @param rarity: string - Item rarity to check
 -- @return boolean - true if player has at least 1

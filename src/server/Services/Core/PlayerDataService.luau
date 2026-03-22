@@ -86,7 +86,7 @@ end
 -- @return boolean - true if saved successfully, false if PlayerData not found
 function PlayerDataService.SavePlayer(userId)
 	if not _playerDataCache[userId] then
-		warn("Player not found:", userId)
+		-- Joueur jamais chargé (kick prématuré, etc.), pas une vraie erreur
 		return false
 	end
 

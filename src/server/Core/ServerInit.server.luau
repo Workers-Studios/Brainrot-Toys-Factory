@@ -13,6 +13,39 @@
 ]]
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- ============================================================
+-- ÉTAPE 0 : S'assurer que RemoteInterface et ses enfants
+-- existent AVANT tout require() (certains modules ont des
+-- WaitForChild() au niveau module).
+-- On réutilise ce qui existe déjà dans Studio, on ne crée
+-- que ce qui manque pour éviter les doublons.
+-- ============================================================
+local function getOrCreate(parent, className, name)
+	local existing = parent:FindFirstChild(name)
+	if existing then return existing end
+	local instance = Instance.new(className)
+	instance.Name = name
+	instance.Parent = parent
+	return instance
+end
+
+local RemoteInterface = getOrCreate(ReplicatedStorage, "Folder", "RemoteInterface")
+local Events          = getOrCreate(RemoteInterface,   "Folder", "Events")
+local Functions       = getOrCreate(RemoteInterface,   "Folder", "Functions")
+local AdminFolder     = getOrCreate(RemoteInterface,   "Folder", "Admin")
+
+getOrCreate(Events,      "RemoteEvent",    "OnMoneyChanged")
+getOrCreate(Events,      "RemoteEvent",    "OnQuotaUpdated")
+getOrCreate(Events,      "RemoteEvent",    "OnNotification")
+getOrCreate(Functions,   "RemoteFunction", "PurchaseSpawner")
+getOrCreate(Functions,   "RemoteFunction", "PlaceSpawner")
+getOrCreate(Functions,   "RemoteFunction", "RequestPlayerData")
+getOrCreate(AdminFolder, "RemoteFunction", "IsAdmin")
+getOrCreate(AdminFolder, "RemoteEvent",    "ExecuteCommand")
+
+print("✅ RemoteInterface prêt")
 
 -- Import all configuration modules
 local SpawnerConfig = require(script.Parent.Parent.Config.SpawnerConfig)
@@ -49,43 +82,39 @@ local PlayerLifecycleHandler = require(script.Parent.Parent.Handlers.PlayerLifec
 local RemoteFunctionHandler = require(script.Parent.Parent.Handlers.RemoteFunctionHandler)
 local AutoSaveHandler = require(script.Parent.Parent.Handlers.AutoSaveHandler)
 
--- Initialize all services in dependency order
+-- Wrapper pour afficher clairement les erreurs d'init sans tuer ServerInit
+local function safeInit(name, fn)
+	local ok, err = pcall(fn)
+	if not ok then
+		warn("❌ [" .. name .. "] Init failed:", err)
+	else
+		print("✅ [" .. name .. "] OK")
+	end
+end
+
 print("Server initialization starting...")
 
--- Foundation layer: Data persistence
-DataService.Init()
+safeInit("DataService",              function() DataService.Init() end)
+safeInit("PlotService",              function() PlotService.Init() end)
+safeInit("PlayerDataService",        function() PlayerDataService.Init(DataService, PlayerData) end)
+safeInit("MoneyService",             function() MoneyService.Init(PlayerDataService) end)
+safeInit("AntiExploitService",       function() AntiExploitService.Init() end)
+safeInit("AdminService",             function() AdminService.Init(PlayerDataService, MoneyService) end)
+safeInit("SpawnerService",           function() SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService) end)
+safeInit("ConveyorService",          function() ConveyorService.Init() end)
+safeInit("GeneratorService",         function() GeneratorService.Init(GeneratorConfig, MoneyService, ToyConfig) end)
+safeInit("CollectionService",        function() CollectionService.Init(PlayerDataService, ToyConfig, GeneratorService) end)
+safeInit("PlacementService",         function() PlacementService.Init(PlayerDataService, SpawnerService, SpawnerConfig) end)
+safeInit("GeneratorPlacementService",function() GeneratorPlacementService.Init(PlayerDataService, GeneratorService) end)
+safeInit("ShopService",              function() ShopService.Init(SpawnerConfig, MoneyService, PlayerDataService) end)
+safeInit("PlayerLifecycleHandler",   function() PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService) end)
+safeInit("RemoteFunctionHandler",    function() RemoteFunctionHandler.Init(ShopService, PlacementService, PlayerDataService) end)
+safeInit("AutoSaveHandler",          function()
+	AutoSaveHandler.Init(PlayerDataService, GameConfig)
+	AutoSaveHandler.StartAutoSave()
+end)
 
--- Core layer: Plot management (BEFORE player lifecycle)
-PlotService.Init()
-
--- Core layer: Player data and economy
-PlayerDataService.Init(DataService, PlayerData)
-MoneyService.Init(PlayerDataService)
-AntiExploitService.Init()
-
--- Core layer: Admin
-AdminService.Init(PlayerDataService, MoneyService)
-
--- Gameplay layer: Core game mechanics
-SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService)
-ConveyorService.Init()
-GeneratorService.Init(GeneratorConfig, MoneyService, ToyConfig)
-CollectionService.Init(PlayerDataService, ToyConfig, GeneratorService)
-PlacementService.Init(PlayerDataService, SpawnerService, SpawnerConfig)
-GeneratorPlacementService.Init(PlayerDataService, GeneratorService)
-
--- Economy layer: Transactions
-ShopService.Init(SpawnerConfig, MoneyService, PlayerDataService)
-
--- Handler layer: Player lifecycle and communication
-PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
-RemoteFunctionHandler.Init(ShopService, PlacementService, PlayerDataService)
-
--- Auto-save handler
-AutoSaveHandler.Init(PlayerDataService, GameConfig)
-AutoSaveHandler.StartAutoSave()
-
-print("Server initialized successfully!")
+print("🎮 Server initialized successfully!")
 print("Services loaded:")
 print("  - DataService")
 print("  - PlotService")

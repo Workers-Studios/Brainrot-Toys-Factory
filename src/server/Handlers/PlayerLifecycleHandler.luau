@@ -41,6 +41,11 @@ function PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
 	Players.PlayerAdded:Connect(PlayerLifecycleHandler.OnPlayerAdded)
 	Players.PlayerRemoving:Connect(PlayerLifecycleHandler.OnPlayerRemoving)
 
+	-- Gère les joueurs déjà présents au moment de l'init (cas Studio + edge cases serveur)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(PlayerLifecycleHandler.OnPlayerAdded, player)
+	end
+
 	print("PlayerLifecycleHandler initialized")
 end
 
@@ -50,9 +55,19 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 	local userId = player.UserId
 
 	-- ⭐ CREATE PLAYER PLOT
-	local plot = PlotService.CreatePlot(userId)
+	local plot
+	local plotSuccess, plotErr = pcall(function()
+		plot = PlotService.CreatePlot(userId)
+	end)
+
+	if not plotSuccess then
+		warn("❌ CreatePlot error for", player.Name, ":", plotErr)
+		player:Kick("Erreur lors de la création du plot. Contacte un administrateur.")
+		return
+	end
+
 	if not plot then
-		player:Kick("Server is full (8/8 players)")
+		player:Kick("Serveur complet (8/8 joueurs) ou configuration manquante.")
 		return
 	end
 
@@ -64,7 +79,12 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 
 	-- ⭐ TELEPORT PLAYER TO THEIR PLOT (improved)
 	local function TeleportToPlot(character)
-		task.wait(0.5)  -- Wait for character to load
+		-- Attendre que HumanoidRootPart soit prêt avant toute tentative de téléport
+		local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
+		if not humanoidRootPart then
+			warn("⚠️ HumanoidRootPart not found for", player.Name)
+			return
+		end
 
 		-- Try multiple times if needed
 		for attempt = 1, 3 do
@@ -77,31 +97,31 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 			end
 
 			-- Find spawn location
-			local spawnLocation = currentPlot:FindFirstChild("SpawnLocation", true)  -- ⭐ Recursive search
+			local spawnLocation = currentPlot:FindFirstChild("SpawnLocation", true)
 
 			if spawnLocation and spawnLocation:IsA("BasePart") then
-				-- Teleport above spawn location
+				-- Téléporter légèrement au-dessus du SpawnLocation
 				local spawnCFrame = spawnLocation.CFrame * CFrame.new(0, 5, 0)
 				character:PivotTo(spawnCFrame)
 				print("✅ Player", player.Name, "teleported to plot at", spawnLocation.Position)
-				return  -- Success
+				return
 			else
 				warn("⚠️ SpawnLocation not found in plot, attempt", attempt)
 
-				-- Fallback: Use PrimaryPart
+				-- Fallback: PrimaryPart du plot
 				if currentPlot.PrimaryPart then
 					local fallbackCFrame = currentPlot.PrimaryPart.CFrame * CFrame.new(0, 10, 0)
 					character:PivotTo(fallbackCFrame)
 					warn("⚠️ Used PrimaryPart fallback for", player.Name)
-					return  -- Success with fallback
+					return
 				end
 			end
 
 			task.wait(0.5)
 		end
 
-		-- All attempts failed
-		error("❌ Failed to teleport player", player.Name, "after 3 attempts")
+		-- Toutes les tentatives ont échoué
+		warn("❌ Failed to teleport player", player.Name, "after 3 attempts")
 	end
 
 	-- Connect to character spawn
