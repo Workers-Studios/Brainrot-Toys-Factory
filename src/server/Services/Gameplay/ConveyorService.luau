@@ -1,10 +1,14 @@
 local ConveyorService = {}
 
-local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local PlotService = require(script.Parent.Parent.Core.PlotService)
 
 local _segments = {}
+local _heartbeats = {}
 local _CollectionService = nil
+
+local CONVEYOR_SPEED = 10
+local EXPAND_BONUS = 4.5
 
 function ConveyorService.Init()
 	_CollectionService = require(script.Parent.CollectionService)
@@ -32,88 +36,29 @@ function ConveyorService.InitializePlotConveyors(userId)
 			continue
 		end
 
-		_segments[userId][segment.Name] = segment
+		local direction = (segment.CFrame * CFrame.Angles(0, math.rad(270), 0)).LookVector
+		local segNum = tonumber(segment.Name:match("%d+")) or 0
+		local expand = (segNum == 4 or segNum == 5) and -EXPAND_BONUS or EXPAND_BONUS
+
+		table.insert(_segments[userId], {
+			Part = segment,
+			Direction = direction,
+			Expand = expand,
+		})
 		count += 1
 
-		-- Configure segment
 		segment.CanCollide = true
-		segment.Material = Enum.Material.Metal
-		segment.Color = Color3.fromRGB(70, 70, 70)
-
-		-- Texture animée
-		local texture = Instance.new("Texture")
-		texture.Name = "ConveyorTexture"
-		texture.Texture = "rbxasset://textures/SpawnLocation.png"
-		texture.Face = Enum.NormalId.Top
-		texture.StudsPerTileU = 2
-		texture.StudsPerTileV = 2
-		texture.Parent = segment
-
-		task.spawn(function()
-			local offset = 0
-			while segment.Parent do
-				offset += 0.15
-				if texture and texture.Parent then
-					texture.OffsetStudsV = offset
-				else
-					break
-				end
-				task.wait(0.05)
-			end
-		end)
-
-		-- ⭐ Physique: Pousser les toys
-		segment.Touched:Connect(function(hit)
-			if hit:IsA("BasePart") and (hit.Name:match("^TralaleroTralala") or hit.Name:match("^BrrBrrPatapim")) then
-				local ownerId = hit:GetAttribute("OwnerId")
-				if ownerId ~= userId then
-					return
-				end
-
-				if not hit:FindFirstChild("ConveyorVelocity") then
-					local attachment = Instance.new("Attachment")
-					attachment.Name = "ConveyorAttachment"
-					attachment.Parent = hit
-
-					local linearVelocity = Instance.new("LinearVelocity")
-					linearVelocity.Name = "ConveyorVelocity"
-					linearVelocity.Attachment0 = attachment
-					linearVelocity.VectorVelocity = segment.CFrame.LookVector * 8
-					linearVelocity.MaxForce = 4000
-					linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
-					linearVelocity.Parent = hit
-				end
-			end
-		end)
-
-		-- Retirer vélocité quand quitte segment
-		segment.TouchEnded:Connect(function(hit)
-			if hit:IsA("BasePart") then
-				local velocity = hit:FindFirstChild("ConveyorVelocity")
-				if velocity then
-					velocity:Destroy()
-				end
-				local attachment = hit:FindFirstChild("ConveyorAttachment")
-				if attachment then
-					attachment:Destroy()
-				end
-			end
-		end)
 	end
 
-	-- ⭐ Setup CollectionZone
+	-- CollectionZone
 	local collection = plot:FindFirstChild("Collection")
 	if collection then
 		local collectionZone = collection:FindFirstChild("CollectionZone")
 		if collectionZone then
 			collectionZone.Touched:Connect(function(hit)
 				if hit:IsA("BasePart") and (hit.Name:match("^TralaleroTralala") or hit.Name:match("^BrrBrrPatapim")) then
-					local ownerId = hit:GetAttribute("OwnerId")
-					if ownerId == userId then
-						local velocity = hit:FindFirstChild("ConveyorVelocity")
-						if velocity then
-							velocity:Destroy()
-						end
+					if hit:GetAttribute("OwnerId") == userId then
+						hit.AssemblyLinearVelocity = Vector3.zero
 						_CollectionService.OnToyCollected(hit)
 					end
 				end
@@ -121,7 +66,51 @@ function ConveyorService.InitializePlotConveyors(userId)
 		end
 	end
 
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+
+	_heartbeats[userId] = RunService.Heartbeat:Connect(function()
+		local segs = _segments[userId]
+		if not segs then return end
+
+		for _, waypoint in ipairs(segs) do
+			if not waypoint.Part.Parent then continue end
+
+			local seg = waypoint.Part
+			local expand = waypoint.Expand
+			local expandedSize = Vector3.new(
+				seg.Size.X + expand,
+				seg.Size.Y + 1,
+				seg.Size.Z + expand
+			)
+
+			overlapParams.FilterDescendantsInstances = {seg}
+			local parts = workspace:GetPartBoundsInBox(seg.CFrame, expandedSize, overlapParams)
+
+			for _, part in ipairs(parts) do
+				if not part:IsA("BasePart") then continue end
+				if not (part.Name:match("^TralaleroTralala") or part.Name:match("^BrrBrrPatapim")) then continue end
+				if part:GetAttribute("OwnerId") ~= userId then continue end
+
+				local dir = waypoint.Direction
+				part.AssemblyLinearVelocity = Vector3.new(
+					dir.X * CONVEYOR_SPEED,
+					part.AssemblyLinearVelocity.Y,
+					dir.Z * CONVEYOR_SPEED
+				)
+			end
+		end
+	end)
+
 	print("Initialized", count, "conveyor segments for plot", userId)
+end
+
+function ConveyorService.StopConveyors(userId)
+	if _heartbeats[userId] then
+		_heartbeats[userId]:Disconnect()
+		_heartbeats[userId] = nil
+	end
+	_segments[userId] = nil
 end
 
 return ConveyorService

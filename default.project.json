@@ -4,24 +4,30 @@
     "$className": "DataModel",
 
     "ServerScriptService": {
-      "$path": "src/server"
+      "$path": "src/server",
+      "$ignoreUnknownInstances": true
     },
 
     "ServerStorage": {
-      "$path": "src/server-storage"
+      "$path": "src/server-storage",
+      "$ignoreUnknownInstances": true
     },
 
     "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
       "StarterPlayerScripts": {
-        "$path": "src/client"
+        "$path": "src/client",
+        "$ignoreUnknownInstances": true
       },
       "StarterCharacterScripts": {
-        "$path": "src/character"
+        "$path": "src/character",
+        "$ignoreUnknownInstances": true
       }
     },
 
     "StarterGui": {
-      "$path": "src/gui"
+      "$path": "src/gui",
+      "$ignoreUnknownInstances": true
     },
 
     "Workspace": {

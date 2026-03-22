@@ -14,6 +14,13 @@
 
 local SpawnerService = {}
 
+local PhysicsService = game:GetService("PhysicsService")
+local PlotService = require(script.Parent.Parent.Core.PlotService)
+
+-- Les toys ne se collisionnent pas entre eux mais collisionnent avec le reste
+pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
+pcall(function() PhysicsService:CollisionGroupSetCollidable("Toys", "Toys", false) end)
+
 local _SpawnerConfig = nil
 local _ToyConfig = nil
 local _PlayerDataService = nil
@@ -123,35 +130,33 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 	toy.Size = Vector3.new(1, 1, 1)
 	toy.Anchored = false
 	toy.CanCollide = true
+	toy.CollisionGroup = "Toys"
 
-	-- ⭐ POSITION CORRECTE: Au-dessus ET vers l'avant du spawner
-	local spawnOffset = spawnerPart.CFrame.Position 
-		+ Vector3.new(0, 5, 0)  -- 5 studs au-dessus
-		+ (spawnerPart.CFrame.LookVector * -7)  -- 5 studs vers l'avant
+	-- Spawn directement au-dessus du spawner, la physique fait le reste
+	toy.Position = spawnerPart.Position + Vector3.new(0, -1.5, 0)
 
-	toy.Position = spawnOffset
-
-	-- ⭐ Store toy metadata (DOUBLE RARETÉ)
+	-- Métadonnées (double rareté)
 	toy:SetAttribute("ToyType", toyType)
 	toy:SetAttribute("ToyRarity", toyRarity)
 	toy:SetAttribute("SpawnerRarity", spawnerRarity)
 	toy:SetAttribute("OwnerId", userId)
 
-	-- Color by TOY rarity
+	-- Couleur selon la rareté du toy
 	if toyRarity == "Common" then
 		toy.Color = Color3.fromRGB(135, 135, 135)
+	elseif toyRarity == "Uncommon" then
+		toy.Color = Color3.fromRGB(30, 180, 30)
 	elseif toyRarity == "Rare" then
-		toy.Color = Color3.fromRGB(0, 0, 255)
+		toy.Color = Color3.fromRGB(0, 100, 255)
 	elseif toyRarity == "Epic" then
 		toy.Color = Color3.fromRGB(128, 0, 128)
 	elseif toyRarity == "Legendary" then
 		toy.Color = Color3.fromRGB(255, 215, 0)
 	end
 
-	-- ⭐ Parent to workspace (toy will fall and trigger ConveyorService.Touched)
-	toy.Parent = workspace
-
-	print("✅ Toy spawned:", toy.Name, "at", toy.Position, "LookVector:", spawnerPart.CFrame.LookVector)
+	-- Parent au plot du joueur → nettoyage automatique au disconnect
+	local plot = PlotService.GetPlot(userId)
+	toy.Parent = plot or workspace
 end
 
 return SpawnerService

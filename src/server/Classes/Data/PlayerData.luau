@@ -24,13 +24,15 @@ function PlayerData.new(userId)
 	
 	self.userId = userId
 	self.money = 100  -- Starting cash
-	
+	self.rebirthLevel = 0
+
 	-- Spawner inventory (items that can be placed on slots)
 	self.inventory = {
-		Common = 1,      -- Start with 1 free common spawner
-		Rare = 0,
-		Epic = 0,
-		Legendary = 0
+		Common    = 1,  -- Start with 1 free common spawner
+		Uncommon  = 0,
+		Rare      = 0,
+		Epic      = 0,
+		Legendary = 0,
 	}
 	
 	-- Generator inventory (unlocked via quotas)
@@ -67,7 +69,8 @@ function PlayerData.load(userId, savedData)
 	
 	self.userId = userId
 	self.money = savedData.money or 100
-	self.inventory = savedData.inventory or {Common = 1, Rare = 0, Epic = 0, Legendary = 0}
+	self.rebirthLevel = savedData.rebirthLevel or 0
+	self.inventory = savedData.inventory or {Common = 1, Uncommon = 0, Rare = 0, Epic = 0, Legendary = 0}
 	self.generatorInventory = savedData.generatorInventory or {}
 	self.quotaProgress = savedData.quotaProgress or {}
 	self.placedSpawners = savedData.placedSpawners or {}
@@ -81,6 +84,7 @@ end
 function PlayerData:Serialize()
 	return {
 		money = self.money,
+		rebirthLevel = self.rebirthLevel,
 		inventory = self.inventory,
 		generatorInventory = self.generatorInventory,
 		quotaProgress = self.quotaProgress,

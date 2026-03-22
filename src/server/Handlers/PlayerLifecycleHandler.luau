@@ -23,6 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Dependencies (required once)
 local PlotService = require(script.Parent.Parent.Services.Core.PlotService)
 local PlacementService = require(script.Parent.Parent.Services.Gameplay.PlacementService)
+local SpawnerConfig = require(script.Parent.Parent.Config.SpawnerConfig)
 local GeneratorPlacementService = require(script.Parent.Parent.Services.Gameplay.GeneratorPlacementService)
 local ConveyorService = require(script.Parent.Parent.Services.Gameplay.ConveyorService)
 local ToyConfig = require(script.Parent.Parent.Config.ToyConfig)
@@ -185,6 +186,20 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 		warn("Error initializing conveyors:", err3)
 	end
 
+	-- ⭐ REDONNER LES TOOLS SPAWNER DE L'INVENTAIRE
+	task.spawn(function()
+		local playerData = _PlayerDataService.GetPlayerData(userId)
+		if playerData then
+			for rarity, count in pairs(playerData.inventory) do
+				if SpawnerConfig[rarity] then
+					for i = 1, count do
+						PlacementService.GiveSpawnerTool(player, rarity)
+					end
+				end
+			end
+		end
+	end)
+
 	-- ⭐ RESTORE PLACED SPAWNERS AND GENERATORS
 	local success4, err4 = pcall(function()
 		PlacementService.RestorePlacedSpawners(userId)
@@ -207,6 +222,9 @@ end
 -- @param player: Player - Roblox player instance
 function PlayerLifecycleHandler.OnPlayerRemoving(player)
 	local userId = player.UserId
+
+	-- Stop conveyor loops
+	ConveyorService.StopConveyors(userId)
 
 	-- Stop all active generator loops
 	_GeneratorService.StopAllGenerators(userId)

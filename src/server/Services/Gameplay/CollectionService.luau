@@ -73,18 +73,6 @@ function CollectionService.OnToyCollected(toy)
 		return
 	end
 
-	-- ⭐ DOUBLE RARETÉ: Calculer valeur
-	local sellValue = toyConfig.SellValue[toyRarity][spawnerRarity]
-	if not sellValue then
-		warn("Sell value not found for", toyType, toyRarity, "from spawner", spawnerRarity)
-		toy:Destroy()
-		return
-	end
-
-	-- Give money to player
-	local MoneyService = require(script.Parent.Parent.Core.MoneyService)
-	MoneyService.AddMoney(userId, sellValue)
-
 	-- Increment quota and check completion
 	CollectionService.IncrementQuota(userId, toyType, toyRarity)
 	CollectionService.CheckQuotaComplete(userId, toyType, toyRarity)
@@ -92,7 +80,7 @@ function CollectionService.OnToyCollected(toy)
 	-- Destroy toy
 	toy:Destroy()
 
-	print("✅ Toy collected:", toyType, toyRarity, "from", spawnerRarity, "spawner →", sellValue, "$")
+	print("✅ Toy collected:", toyType, toyRarity)
 end
 
 -- Increments collection quota for a toy type and rarity
@@ -109,11 +97,17 @@ function CollectionService.IncrementQuota(userId, toyType, rarity)
 	-- Initialize quota structure if first time
 	if not playerData.quotaProgress[toyType] then
 		playerData.quotaProgress[toyType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
+			Common    = 0,
+			Uncommon  = 0,
+			Rare      = 0,
+			Epic      = 0,
+			Legendary = 0,
 		}
+	end
+
+	-- Ensure Uncommon key exists for older saves
+	if playerData.quotaProgress[toyType]["Uncommon"] == nil then
+		playerData.quotaProgress[toyType]["Uncommon"] = 0
 	end
 
 	-- Increment quota
@@ -164,10 +158,14 @@ function CollectionService.CheckQuotaComplete(userId, toyType, rarity)
 
 	print("Quota reached!", toyType, rarity, currentQuota, "/", requiredQuota)
 
-	-- Award generator to inventory
+	-- Donner le brainrot Tool au joueur
 	local generatorType = _ToyConfig[toyType].GeneratorType
-	_PlayerDataService.AddGenerator(userId, generatorType, rarity)
-	print("Generator added to inventory:", generatorType, rarity)
+	local player = game.Players:GetPlayerByUserId(userId)
+	if player then
+		local PlacementService = require(script.Parent.PlacementService)
+		PlacementService.GiveBrainrotTool(player, generatorType, rarity)
+		print("Brainrot tool given to", player.Name, ":", generatorType, rarity)
+	end
 
 	-- Reset quota
 	playerData.quotaProgress[toyType][rarity] = 0

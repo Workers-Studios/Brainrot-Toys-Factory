@@ -16,6 +16,7 @@
 local GeneratorPlacementService = {}
 
 local PlotService = require(script.Parent.Parent.Core.PlotService)
+local PlacementService = require(script.Parent.PlacementService)
 
 local _PlayerDataService = nil
 local _GeneratorService = nil
@@ -105,11 +106,12 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		return
 	end
 
-	-- Get first available generator from inventory
-	local generatorType, rarity = GeneratorPlacementService.GetFirstAvailableGenerator(playerData)
+	-- Lire le Tool brainrot équipé
+	local player = game.Players:GetPlayerByUserId(userId)
+	local _, generatorType, rarity = PlacementService.GetEquippedBrainrotInfo(player)
 
 	if not generatorType then
-		warn("No generator available in inventory")
+		warn("Aucun brainrot équipé pour", userId)
 		return
 	end
 
@@ -127,8 +129,10 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	-- Color by rarity
 	if rarity == "Common" then
 		generatorPart.Color = Color3.fromRGB(135, 135, 135)
+	elseif rarity == "Uncommon" then
+		generatorPart.Color = Color3.fromRGB(30, 180, 30)
 	elseif rarity == "Rare" then
-		generatorPart.Color = Color3.fromRGB(0, 0, 255)
+		generatorPart.Color = Color3.fromRGB(0, 100, 255)
 	elseif rarity == "Epic" then
 		generatorPart.Color = Color3.fromRGB(128, 0, 128)
 	elseif rarity == "Legendary" then
@@ -144,8 +148,8 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		proximityPrompt.Enabled = false
 	end
 
-	-- Remove from inventory
-	_PlayerDataService.RemoveGenerator(userId, generatorType, rarity)
+	-- Supprimer le Tool de la main du joueur
+	PlacementService.RemoveBrainrotTool(player, generatorType, rarity)
 
 	-- Get income rate from config
 	local GeneratorConfig = require(game.ServerScriptService.Config.GeneratorConfig)
