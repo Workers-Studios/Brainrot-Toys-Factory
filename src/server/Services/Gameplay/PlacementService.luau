@@ -276,8 +276,7 @@ function PlacementService.CreateSpawnerPart(rarity, slotPart)
 			local _, modelSize = clone:GetBoundingBox()
 			local surfaceOffset = slotPart.Size.Y / 2 + modelSize.Y / 2
 			clone:PivotTo(targetCFrame * CFrame.new(0, surfaceOffset, 0) * CFrame.Angles(0, math.rad(90), 0))
-
-			-- Créer un point de référence invisible au centre exact du modèle
+			-- Point de référence au centre du modèle (les toys spawns à la base)
 			local boundingCF, boundingSize = clone:GetBoundingBox()
 			local anchor = Instance.new("Part")
 			anchor.Name = "SpawnAnchor"
@@ -285,7 +284,7 @@ function PlacementService.CreateSpawnerPart(rarity, slotPart)
 			anchor.Anchored = true
 			anchor.CanCollide = false
 			anchor.Transparency = 1
-			anchor.CFrame = boundingCF
+			anchor.CFrame = CFrame.new(boundingCF.Position - Vector3.new(0, boundingSize.Y / 2, 0))
 			anchor.Parent = clone
 			return anchor
 		end
@@ -301,6 +300,95 @@ function PlacementService.CreateSpawnerPart(rarity, slotPart)
 	part.CFrame = targetCFrame
 	part.Parent = workspace
 	return part
+end
+
+local EGG_COLORS = {
+	Common    = Color3.fromRGB(135, 135, 135),
+	Uncommon  = Color3.fromRGB(30,  180, 30),
+	Rare      = Color3.fromRGB(0,   100, 255),
+	Epic      = Color3.fromRGB(128, 0,   128),
+	Legendary = Color3.fromRGB(255, 215, 0),
+}
+
+-- Nom du Tool oeuf (identifié par rareté uniquement)
+local function eggToolName(rarity)
+	return "Oeuf_" .. rarity
+end
+
+-- Donne un oeuf stacké dans le backpack (crée ou incrémente Count)
+-- @param player  : Player - le joueur
+-- @param rarity  : string - rareté de l'oeuf (Common, Rare, ...)
+function PlacementService.GiveEggTool(player, rarity)
+	local toolName = eggToolName(rarity)
+
+	-- Stack si déjà présent
+	local existing = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+
+	if existing and existing:IsA("Tool") then
+		existing:SetAttribute("Count", (existing:GetAttribute("Count") or 1) + 1)
+		return
+	end
+
+	-- Créer le Tool
+	local tool = Instance.new("Tool")
+	tool.Name          = toolName
+	tool.RequiresHandle = true
+	tool:SetAttribute("Rarity", rarity)
+	tool:SetAttribute("Count",  1)
+
+	local handle = Instance.new("Part")
+	handle.Name         = "Handle"
+	handle.Size         = Vector3.new(1, 1, 1)
+	handle.Color        = EGG_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
+	handle.CanCollide   = false
+	handle.Massless     = true
+	handle.Parent       = tool
+
+	tool.Parent = player.Backpack
+end
+
+-- Retourne le Tool oeuf équipé ou le premier du backpack
+-- @return tool, rarity
+function PlacementService.GetEquippedEggInfo(player)
+	local function check(t)
+		if t:IsA("Tool") and t.Name:match("^Oeuf_") then
+			return t, t:GetAttribute("Rarity")
+		end
+	end
+
+	if player.Character then
+		local t = player.Character:FindFirstChildOfClass("Tool")
+		if t then
+			local tool, r = check(t)
+			if tool then return tool, r end
+		end
+	end
+
+	for _, t in ipairs(player.Backpack:GetChildren()) do
+		local tool, r = check(t)
+		if tool then return tool, r end
+	end
+
+	return nil, nil
+end
+
+-- Retire un oeuf du backpack (décrémente Count ou détruit)
+-- @param player : Player - le joueur
+-- @param rarity : string - rareté de l'oeuf
+function PlacementService.RemoveEggTool(player, rarity)
+	local toolName = eggToolName(rarity)
+	local tool = (player.Character and player.Character:FindFirstChild(toolName))
+		or player.Backpack:FindFirstChild(toolName)
+
+	if not tool or not tool:IsA("Tool") then return end
+
+	local count = tool:GetAttribute("Count") or 1
+	if count <= 1 then
+		tool:Destroy()
+	else
+		tool:SetAttribute("Count", count - 1)
+	end
 end
 
 local BRAINROT_COLORS = {
@@ -413,11 +501,8 @@ function PlacementService.RestorePlacedSpawners(userId)
 		return
 	end
 
-	print("Spawners to restore:", #playerData.placedSpawners)
-
 	-- Restore each saved spawner
-	for i, placedData in ipairs(playerData.placedSpawners) do
-		print("Restoring spawner", i, ":", placedData.SlotName, placedData.Rarity)
+	for _, placedData in ipairs(playerData.placedSpawners) do
 
 		local slotName = placedData.SlotName
 		local rarity = placedData.Rarity
@@ -456,7 +541,6 @@ function PlacementService.RestorePlacedSpawners(userId)
 			_SpawnerService.StartSpawner(userId, rarity, spawnerPart)
 		end)
 
-		print("Spawner restored:", slotName, rarity)
 	end
 end
 

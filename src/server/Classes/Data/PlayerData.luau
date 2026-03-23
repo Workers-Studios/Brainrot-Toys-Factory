@@ -28,7 +28,7 @@ function PlayerData.new(userId)
 
 	-- Spawner inventory (items that can be placed on slots)
 	self.inventory = {
-		Common    = 1,  -- Start with 1 free common spawner
+		Common    = 0,
 		Uncommon  = 0,
 		Rare      = 0,
 		Epic      = 0,
@@ -37,14 +37,14 @@ function PlayerData.new(userId)
 	
 	-- Generator inventory (unlocked via quotas)
 	self.generatorInventory = {
-		-- Format: [GeneratorType][Rarity] = count
-		-- Example: Tralalero_Tralala_Generator = {Common = 1, Rare = 0, ...}
+		-- Format: [GeneratorType] = count
+		-- Example: Common_Generator = 2, Rare_Generator = 1
 	}
-	
+
 	-- Quota progress toward unlocking generators
 	self.quotaProgress = {
-		-- Format: [ToyType][Rarity] = currentCount
-		-- Example: TralaleroTralala = {Common = 5, Rare = 2, ...}
+		-- Format: [Rarity] = currentCount
+		-- Example: Common = 5, Rare = 2
 	}
 	
 	-- Physical spawners placed on plot
@@ -70,7 +70,7 @@ function PlayerData.load(userId, savedData)
 	self.userId = userId
 	self.money = savedData.money or 100
 	self.rebirthLevel = savedData.rebirthLevel or 0
-	self.inventory = savedData.inventory or {Common = 1, Uncommon = 0, Rare = 0, Epic = 0, Legendary = 0}
+	self.inventory = savedData.inventory or {Common = 0, Uncommon = 0, Rare = 0, Epic = 0, Legendary = 0}
 	self.generatorInventory = savedData.generatorInventory or {}
 	self.quotaProgress = savedData.quotaProgress or {}
 	self.placedSpawners = savedData.placedSpawners or {}
@@ -151,82 +151,44 @@ function PlayerData:RemoveFromInventory(rarity, count)
 	return false
 end
 
--- Adds generator to inventory
--- @param generatorType: string - Type of generator
--- @param rarity: string - Generator rarity
+-- Adds an egg to inventory
+-- @param rarity: string - Rarity of the egg (ex: "Common", "Rare")
 -- @param count: number - Amount to add (default 1)
-function PlayerData:AddGenerator(generatorType, rarity, count)
+function PlayerData:AddGenerator(rarity, count)
 	count = count or 1
-	
-	-- Initialize generator type if doesn't exist
-	if not self.generatorInventory[generatorType] then
-		self.generatorInventory[generatorType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
-	end
-	
-	self.generatorInventory[generatorType][rarity] = 
-		(self.generatorInventory[generatorType][rarity] or 0) + count
+	self.generatorInventory[rarity] = (self.generatorInventory[rarity] or 0) + count
 end
 
--- Removes generator from inventory
--- @param generatorType: string - Type of generator
--- @param rarity: string - Generator rarity
+-- Removes an egg from inventory
+-- @param rarity: string - Rarity of the egg (ex: "Common", "Rare")
 -- @param count: number - Amount to remove (default 1)
 -- @return boolean - true if successful
-function PlayerData:RemoveGenerator(generatorType, rarity, count)
+function PlayerData:RemoveGenerator(rarity, count)
 	count = count or 1
-	
-	if self.generatorInventory[generatorType] and 
-	   self.generatorInventory[generatorType][rarity] and
-	   self.generatorInventory[generatorType][rarity] >= count then
-		self.generatorInventory[generatorType][rarity] = 
-			self.generatorInventory[generatorType][rarity] - count
+	if self.generatorInventory[rarity] and self.generatorInventory[rarity] >= count then
+		self.generatorInventory[rarity] = self.generatorInventory[rarity] - count
 		return true
 	end
-	
 	return false
 end
 
--- Increments quota progress for a toy type and rarity
--- @param toyType: string - Type of toy collected
+-- Increments quota progress for a rarity
 -- @param rarity: string - Rarity of toy collected
-function PlayerData:IncrementQuota(toyType, rarity)
-	-- Initialize toy type if doesn't exist
-	if not self.quotaProgress[toyType] then
-		self.quotaProgress[toyType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
-	end
-	
-	self.quotaProgress[toyType][rarity] = 
-		(self.quotaProgress[toyType][rarity] or 0) + 1
+function PlayerData:IncrementQuota(rarity)
+	self.quotaProgress[rarity] = (self.quotaProgress[rarity] or 0) + 1
 end
 
 -- Gets current quota progress
--- @param toyType: string - Type of toy
 -- @param rarity: string - Rarity tier
 -- @return number - Current progress count
-function PlayerData:GetQuotaProgress(toyType, rarity)
-	if self.quotaProgress[toyType] and self.quotaProgress[toyType][rarity] then
-		return self.quotaProgress[toyType][rarity]
-	end
-	return 0
+function PlayerData:GetQuotaProgress(rarity)
+	return self.quotaProgress[rarity] or 0
 end
 
--- Resets quota for a specific toy type and rarity
--- @param toyType: string - Type of toy
+-- Resets quota for a specific rarity
 -- @param rarity: string - Rarity tier
-function PlayerData:ResetQuota(toyType, rarity)
-	if self.quotaProgress[toyType] then
-		self.quotaProgress[toyType][rarity] = 0
-	end
+function PlayerData:ResetQuota(rarity)
+	self.quotaProgress[rarity] = 0
 end
 
 return PlayerData

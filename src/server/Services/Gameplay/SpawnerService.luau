@@ -1,161 +1,150 @@
 --[[
-	Manages spawner toy generation and rarity distribution
-	Handles continuous toy spawning loops with weighted RNG
-	
-	Main responsibilities:
-	- Start/stop spawner generation loops per player
-	- Determine toy rarity based on spawner tier drop rates
-	- Create toy objects with visual properties
-	- Register toy ownership for collection tracking
-	- Initialize toys on conveyor system
-	
-	Spawn workflow: Spawner loop → determine rarity → create toy → place on conveyor → track ownership
+	Gestion des spawners de toys
+	Chaque spawner roll une rareté via ses DropRates, puis pioche un modèle
+	aléatoire dans ServerStorage/ToyModels/{ToyRarity}/
+
+	Fallback : Part colorée si le dossier est vide ou absent
 ]]
 
 local SpawnerService = {}
 
 local PhysicsService = game:GetService("PhysicsService")
-local PlotService = require(script.Parent.Parent.Core.PlotService)
+local ServerStorage  = game:GetService("ServerStorage")
+local PlotService    = require(script.Parent.Parent.Core.PlotService)
 
--- Les toys ne se collisionnent pas entre eux mais collisionnent avec le reste
+-- Les toys ne se collisionnent pas entre eux
 pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
 pcall(function() PhysicsService:CollisionGroupSetCollidable("Toys", "Toys", false) end)
 
-local _SpawnerConfig = nil
-local _ToyConfig = nil
-local _PlayerDataService = nil
-local _activeSpawners = {}  -- Tracks active spawner loops: {userId_rarity = true}
+local RARITY_COLORS = {
+	Common    = Color3.fromRGB(180, 180, 180),
+	Uncommon  = Color3.fromRGB(30,  180, 30),
+	Rare      = Color3.fromRGB(0,   100, 255),
+	Epic      = Color3.fromRGB(128, 0,   128),
+	Legendary = Color3.fromRGB(255, 215, 0),
+}
 
--- Initializes service with required dependencies
--- @param SpawnerConfig: table - Spawner configuration data
--- @param ToyConfig: table - Toy configuration data
--- @param PlayerDataService: service - Player data management service
+-- Ordre fixe pour le roll cumulatif
+local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary" }
+
+local _SpawnerConfig    = nil
+local _PlayerDataService = nil
+local _activeSpawners   = {}  -- [userId_rarity] = true
+
 function SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService)
-	_SpawnerConfig = SpawnerConfig
-	_ToyConfig = ToyConfig
+	_SpawnerConfig     = SpawnerConfig
 	_PlayerDataService = PlayerDataService
 end
 
--- Starts continuous toy generation loop for a spawner
--- @param userId: number - Player's user ID
--- @param rarity: string - Spawner rarity tier
--- @param spawnerPart: BasePart - The spawner part
+-- Démarre la boucle de génération d'un spawner
 function SpawnerService.StartSpawner(userId, rarity, spawnerPart)
-	-- Validate spawner config exists
 	if not _SpawnerConfig[rarity] then
-		warn("SpawnerConfig not initialized for", rarity)
+		warn("SpawnerConfig manquant pour:", rarity)
 		return
 	end
 
-	-- Mark spawner as active
 	local spawnerId = userId .. "_" .. rarity
 	_activeSpawners[spawnerId] = true
 
-	-- Continuous spawn loop
 	task.spawn(function()
 		while _activeSpawners[spawnerId] do
 			task.wait(_SpawnerConfig[rarity].SpawnRate)
-
-			-- Check if spawner still active (player might have left)
-			if not _activeSpawners[spawnerId] then
-				break
-			end
-
-			-- Spawn toy (rarity determined inside SpawnToy)
+			if not _activeSpawners[spawnerId] then break end
 			SpawnerService.SpawnToy(userId, rarity, spawnerPart)
 		end
 	end)
 end
 
--- Stops spawner generation loop
--- @param userId: number - Player's user ID
--- @param rarity: string - Spawner rarity tier
+-- Arrête la boucle d'un spawner
 function SpawnerService.StopSpawner(userId, rarity)
 	_activeSpawners[userId .. "_" .. rarity] = nil
 end
 
--- Spawns a toy from a spawner with rarity-based drop rates and double rarity system
--- @param userId: number - Player's user ID
--- @param spawnerRarity: string - Rarity of the spawner ("Common", "Rare", etc.)
--- @param spawnerPart: BasePart - The spawner part (for position and rotation)
-function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
-	-- Validate parameters
-	if not userId or not spawnerRarity or not spawnerPart then
-		warn("Invalid parameters for SpawnToy")
-		return
-	end
-
-	-- Get spawner configuration
-	local spawnerConfig = _SpawnerConfig[spawnerRarity]
-	if not spawnerConfig then
-		warn("Spawner config not found for rarity:", spawnerRarity)
-		return
-	end
-
-	-- Get toy TYPE from spawner config
-	local toyType = spawnerConfig.ToyType
-	if not toyType then
-		warn("ToyType not defined for spawner:", spawnerRarity)
-		return
-	end
-
-	-- Verify toy TYPE exists in ToyConfig
-	local toyConfig = _ToyConfig[toyType]
-	if not toyConfig then
-		warn("Toy type not found in ToyConfig:", toyType)
-		return
-	end
-
-	-- ROLL for toy RARITY based on drop rates
+-- Roll la rareté du toy selon les DropRates du spawner
+local function rollToyRarity(dropRates)
 	local roll = math.random()
-	local cumulativeProbability = 0
-	local toyRarity = nil
+	local cumulative = 0
+	for _, rarity in ipairs(RARITY_ORDER) do
+		local rate = dropRates[rarity]
+		if rate then
+			cumulative += rate
+			if roll <= cumulative then
+				return rarity
+			end
+		end
+	end
+	return "Common"  -- fallback
+end
 
-	for rarity, dropRate in pairs(spawnerConfig.DropRates) do
-		cumulativeProbability += dropRate
-		if roll <= cumulativeProbability then
-			toyRarity = rarity
-			break
+-- Pioche un modèle aléatoire dans ServerStorage/ToyModels/{rarity}
+local function pickRandomModel(rarity)
+	local toyModels = ServerStorage:FindFirstChild("ToyModels")
+	if not toyModels then return nil end
+	local folder = toyModels:FindFirstChild(rarity)
+	if not folder then return nil end
+	local models = folder:GetChildren()
+	if #models == 0 then return nil end
+	return models[math.random(1, #models)]
+end
+
+-- Spawne un toy au niveau du spawner
+function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
+	if not userId or not spawnerRarity or not spawnerPart then return end
+
+	local spawnerConfig = _SpawnerConfig[spawnerRarity]
+	if not spawnerConfig then return end
+
+	-- Roll la rareté du toy
+	local toyRarity = rollToyRarity(spawnerConfig.DropRates)
+
+	local plot    = PlotService.GetPlot(userId)
+	local template = pickRandomModel(toyRarity)
+	local toy
+
+	if template then
+		if template:IsA("Model") then
+			toy = template:Clone()
+			for _, part in ipairs(toy:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Anchored       = false
+					part.CanCollide     = true
+					part.CollisionGroup = "Toys"
+				end
+			end
+			local _, size = toy:GetBoundingBox()
+			toy:PivotTo(CFrame.new(spawnerPart.Position + Vector3.new(0, size.Y / 2 + 1, 0)))
+
+			local primary = toy.PrimaryPart or toy:FindFirstChildWhichIsA("BasePart")
+			if primary then
+				primary:SetAttribute("ToyRarity", toyRarity)
+				primary:SetAttribute("OwnerId",   userId)
+			end
+
+		elseif template:IsA("BasePart") then
+			toy = template:Clone()
+			toy.Anchored       = false
+			toy.CanCollide     = true
+			toy.CollisionGroup = "Toys"
+			toy.Position       = spawnerPart.Position + Vector3.new(0, toy.Size.Y / 2 + 1, 0)
+			toy:SetAttribute("ToyRarity", toyRarity)
+			toy:SetAttribute("OwnerId",   userId)
 		end
 	end
 
-	if not toyRarity then
-		warn("Failed to determine toy rarity for spawner:", spawnerRarity)
-		return
+	-- Fallback : Part colorée
+	if not toy then
+		toy = Instance.new("Part")
+		toy.Size           = Vector3.new(1, 1, 1)
+		toy.Color          = RARITY_COLORS[toyRarity] or Color3.fromRGB(200, 200, 200)
+		toy.Anchored       = false
+		toy.CanCollide     = true
+		toy.CollisionGroup = "Toys"
+		toy.Position       = spawnerPart.Position + Vector3.new(0, 1.5, 0)
+		toy:SetAttribute("ToyRarity", toyRarity)
+		toy:SetAttribute("OwnerId",   userId)
 	end
 
-	-- ⭐ Create toy with TYPE and RARITY
-	local toy = Instance.new("Part")
-	toy.Name = toyType .. "_" .. toyRarity .. "_" .. userId
-	toy.Size = Vector3.new(1, 1, 1)
-	toy.Anchored = false
-	toy.CanCollide = true
-	toy.CollisionGroup = "Toys"
-
-	-- Spawn directement au-dessus du spawner, la physique fait le reste
-	toy.Position = spawnerPart.Position + Vector3.new(0, -1.5, 0)
-
-	-- Métadonnées (double rareté)
-	toy:SetAttribute("ToyType", toyType)
-	toy:SetAttribute("ToyRarity", toyRarity)
-	toy:SetAttribute("SpawnerRarity", spawnerRarity)
-	toy:SetAttribute("OwnerId", userId)
-
-	-- Couleur selon la rareté du toy
-	if toyRarity == "Common" then
-		toy.Color = Color3.fromRGB(135, 135, 135)
-	elseif toyRarity == "Uncommon" then
-		toy.Color = Color3.fromRGB(30, 180, 30)
-	elseif toyRarity == "Rare" then
-		toy.Color = Color3.fromRGB(0, 100, 255)
-	elseif toyRarity == "Epic" then
-		toy.Color = Color3.fromRGB(128, 0, 128)
-	elseif toyRarity == "Legendary" then
-		toy.Color = Color3.fromRGB(255, 215, 0)
-	end
-
-	-- Parent au plot du joueur → nettoyage automatique au disconnect
-	local plot = PlotService.GetPlot(userId)
+	toy.Name   = "Toy_" .. toyRarity .. "_" .. userId
 	toy.Parent = plot or workspace
 end
 

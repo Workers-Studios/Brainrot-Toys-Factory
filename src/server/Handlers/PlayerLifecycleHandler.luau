@@ -101,21 +101,21 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 			local spawnLocation = currentPlot:FindFirstChild("SpawnLocation", true)
 
 			if spawnLocation and spawnLocation:IsA("BasePart") then
-				-- Téléporter légèrement au-dessus du SpawnLocation
-				local spawnCFrame = spawnLocation.CFrame * CFrame.new(0, 5, 0)
-				character:PivotTo(spawnCFrame)
-				print("✅ Player", player.Name, "teleported to plot at", spawnLocation.Position)
+				character:PivotTo(spawnLocation.CFrame * CFrame.new(0, 5, 0))
 				return
-			else
-				warn("⚠️ SpawnLocation not found in plot, attempt", attempt)
+			end
 
-				-- Fallback: PrimaryPart du plot
-				if currentPlot.PrimaryPart then
-					local fallbackCFrame = currentPlot.PrimaryPart.CFrame * CFrame.new(0, 10, 0)
-					character:PivotTo(fallbackCFrame)
-					warn("⚠️ Used PrimaryPart fallback for", player.Name)
-					return
-				end
+			-- Fallback : PrimaryPart
+			if currentPlot.PrimaryPart then
+				character:PivotTo(currentPlot.PrimaryPart.CFrame * CFrame.new(0, 10, 0))
+				return
+			end
+
+			-- Fallback ultime : centre du plot via GetBoundingBox
+			local cf, _ = currentPlot:GetBoundingBox()
+			if cf then
+				character:PivotTo(cf * CFrame.new(0, 10, 0))
+				return
 			end
 
 			task.wait(0.5)
@@ -149,16 +149,15 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 		local OnMoneyChanged = ReplicatedStorage.RemoteInterface.Events.OnMoneyChanged
 		OnMoneyChanged:FireClient(player, playerData.money)
 
-		-- Sync quotas
+		-- Sync quotas (structure plate : [rarity] = count)
 		local OnQuotaUpdated = ReplicatedStorage.RemoteInterface.Events.OnQuotaUpdated
-		for toyType, quotas in pairs(playerData.quotaProgress) do
-			for rarity, currentCount in pairs(quotas) do
-				local maxQuota = ToyConfig[toyType].QuotaToGenerator[rarity]
-				OnQuotaUpdated:FireClient(player, toyType, rarity, currentCount, maxQuota)
+		for rarity, currentCount in pairs(playerData.quotaProgress) do
+			local toyData = ToyConfig[rarity]
+			if toyData then
+				OnQuotaUpdated:FireClient(player, rarity, currentCount, toyData.QuotaToGenerator)
 			end
 		end
 
-		print("📊 Data synced for", player.Name)
 	end)
 
 	-- Wait for plot to be ready
@@ -186,14 +185,23 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 		warn("Error initializing conveyors:", err3)
 	end
 
-	-- ⭐ REDONNER LES TOOLS SPAWNER DE L'INVENTAIRE
+	-- ⭐ REDONNER LES TOOLS SPAWNER ET OEUFS DE L'INVENTAIRE
 	task.spawn(function()
 		local playerData = _PlayerDataService.GetPlayerData(userId)
 		if playerData then
+			-- Spawner tools
 			for rarity, count in pairs(playerData.inventory) do
 				if SpawnerConfig[rarity] then
 					for i = 1, count do
 						PlacementService.GiveSpawnerTool(player, rarity)
+					end
+				end
+			end
+			-- Egg tools (oeufs) — structure plate : [rarity] = count
+			for rarity, count in pairs(playerData.generatorInventory) do
+				if count and count > 0 then
+					for _ = 1, count do
+						PlacementService.GiveEggTool(player, rarity)
 					end
 				end
 			end
@@ -229,8 +237,8 @@ function PlayerLifecycleHandler.OnPlayerRemoving(player)
 	-- Stop all active generator loops
 	_GeneratorService.StopAllGenerators(userId)
 
-	-- Save player data to DataStore
-	_PlayerDataService.SavePlayer(userId)
+	-- Save player data immediately on disconnect (bypass debounce)
+	_PlayerDataService.SavePlayerImmediate(userId)
 
 	-- Remove from memory
 	_PlayerDataService.RemovePlayer(userId)

@@ -63,11 +63,11 @@ function ConveyorService.InitializePlotConveyors(userId)
 		local collectionZone = collection:FindFirstChild("CollectionZone")
 		if collectionZone then
 			collectionZone.Touched:Connect(function(hit)
-				if hit:IsA("BasePart") and (hit.Name:match("^TralaleroTralala") or hit.Name:match("^BrrBrrPatapim")) then
-					if hit:GetAttribute("OwnerId") == userId then
-						hit.AssemblyLinearVelocity = Vector3.zero
-						_CollectionService.OnToyCollected(hit)
-					end
+				if hit:IsA("BasePart")
+					and hit:GetAttribute("OwnerId") == userId
+					and hit:GetAttribute("ToyRarity") ~= nil then
+					hit.AssemblyLinearVelocity = Vector3.zero
+					_CollectionService.OnToyCollected(hit)
 				end
 			end)
 		end
@@ -96,7 +96,7 @@ function ConveyorService.InitializePlotConveyors(userId)
 
 			for _, part in ipairs(parts) do
 				if not part:IsA("BasePart") then continue end
-				if not (part.Name:match("^TralaleroTralala") or part.Name:match("^BrrBrrPatapim")) then continue end
+				if part:GetAttribute("ToyRarity") == nil then continue end
 				if part:GetAttribute("OwnerId") ~= userId then continue end
 
 				local dir = waypoint.Direction
