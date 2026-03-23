@@ -38,17 +38,24 @@ function ConveyorService.InitializePlotConveyors(userId)
 
 		local direction = (segment.CFrame * CFrame.Angles(0, math.rad(270), 0)).LookVector
 		local segNum = tonumber(segment.Name:match("%d+")) or 0
-		local expand = (segNum == 4 or segNum == 5) and -EXPAND_BONUS or EXPAND_BONUS
+		local expand = (segNum == 8) and 0 or EXPAND_BONUS
 
 		table.insert(_segments[userId], {
 			Part = segment,
 			Direction = direction,
 			Expand = expand,
+			Num = segNum,
 		})
 		count += 1
 
 		segment.CanCollide = true
 	end
+
+	-- Trier en ordre DESCENDANT : les segments bas écrasent les hauts
+	-- Un toy sur le 7 ET dans la zone du 8 → le 7 gagne (priorité)
+	table.sort(_segments[userId], function(a, b)
+		return a.Num > b.Num
+	end)
 
 	-- CollectionZone
 	local collection = plot:FindFirstChild("Collection")
