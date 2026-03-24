@@ -1,28 +1,34 @@
 --[[
 	Manages in-memory PlayerData instances and provides access layer
 	Acts as intermediary between services and PlayerData class/DataService
-	
+
 	Main responsibilities:
 	- Load player data from DataStore and cache in memory
 	- Provide access methods to PlayerData operations
-	- Save player data back to DataStore
+	- Save player data back to DataStore (debounced to avoid throttling)
 	- Clean up memory on player disconnect
-	
+
 	Cache structure: {[userId] = PlayerData instance}
+
+	SavePlayer   : debounced (10s delay) — pour les saves fréquentes
+	SavePlayerImmediate : bypass le debounce — pour les events critiques
 ]]
 
 local PlayerDataService = {}
 
 local _playerDataCache = {}
-local _DataService = nil
-local _PlayerData = nil
+local _DataService     = nil
+local _PlayerData      = nil
+
+local _pendingSaves    = {}       -- [userId] = true si une save est en attente
+local SAVE_DEBOUNCE    = 10       -- secondes entre deux saves automatiques
 
 -- Initializes service with required dependencies
 -- @param DataService: service - Data persistence service
 -- @param PlayerData: class - PlayerData OOP class
 function PlayerDataService.Init(DataService, PlayerData)
 	_DataService = DataService
-	_PlayerData = PlayerData
+	_PlayerData  = PlayerData
 end
 
 -- Loads player data from DataStore and caches in memory
@@ -30,36 +36,39 @@ end
 -- @return PlayerData - Cached PlayerData instance
 function PlayerDataService.LoadPlayer(userId)
 	local loadedData = _DataService.LoadPlayerData(userId)
-	local playerData = _PlayerData.new(userId, loadedData)
+
+	local playerData
+	if loadedData then
+		playerData = _PlayerData.load(userId, loadedData)
+	else
+		playerData = _PlayerData.new(userId)
+	end
 
 	_playerDataCache[userId] = playerData
-
 	return playerData
 end
 
--- Adds a generator to player's inventory
--- @param userId: number - Player's user ID
--- @param generatorType: string - Generator type
--- @param rarity: string - Generator rarity
--- @return boolean - true if successful, false if PlayerData not found
-function PlayerDataService.AddGenerator(userId, generatorType, rarity)
+-- Adds an egg (generator) to player's inventory
+-- @param userId  : number - Player's user ID
+-- @param rarity  : string - Egg rarity (ex: "Common", "Rare")
+-- @return boolean - true if successful
+function PlayerDataService.AddGenerator(userId, rarity)
 	local playerData = PlayerDataService.GetPlayerData(userId)
 	if playerData then
-		playerData:AddGenerator(generatorType, rarity)
+		playerData:AddGenerator(rarity)
 		return true
 	end
 	return false
 end
 
--- Removes a generator from player's inventory
--- @param userId: number - Player's user ID
--- @param generatorType: string - Generator type
--- @param rarity: string - Generator rarity
--- @return boolean - true if removed, false if unavailable or PlayerData not found
-function PlayerDataService.RemoveGenerator(userId, generatorType, rarity)
+-- Removes an egg (generator) from player's inventory
+-- @param userId  : number - Player's user ID
+-- @param rarity  : string - Egg rarity (ex: "Common", "Rare")
+-- @return boolean - true if removed, false if unavailable
+function PlayerDataService.RemoveGenerator(userId, rarity)
 	local playerData = PlayerDataService.GetPlayerData(userId)
 	if playerData then
-		return playerData:RemoveGenerator(generatorType, rarity)
+		return playerData:RemoveGenerator(rarity)
 	end
 	return false
 end
@@ -75,18 +84,33 @@ function PlayerDataService.GetGeneratorInventory(userId)
 	return nil
 end
 
--- Saves player data to DataStore
+-- Saves player data to DataStore (debounced — max 1 save per SAVE_DEBOUNCE seconds)
+-- Pour les saves peu critiques (incrément quota, etc.)
 -- @param userId: number - Player's user ID
--- @return boolean - true if saved successfully, false if PlayerData not found
 function PlayerDataService.SavePlayer(userId)
+	if _pendingSaves[userId] then return end  -- déjà en attente
+	_pendingSaves[userId] = true
+
+	task.delay(SAVE_DEBOUNCE, function()
+		_pendingSaves[userId] = nil
+		if _playerDataCache[userId] then
+			local serializedData = _playerDataCache[userId]:Serialize()
+			_DataService.SavePlayerData(userId, serializedData)
+		end
+	end)
+end
+
+-- Saves player data immediately, bypassing the debounce
+-- Pour les events critiques : quota complété, générateur posé, déconnexion
+-- @param userId: number - Player's user ID
+-- @return boolean - true if saved successfully
+function PlayerDataService.SavePlayerImmediate(userId)
+	_pendingSaves[userId] = nil  -- annule la save déboncée en attente
 	if not _playerDataCache[userId] then
-		warn("Player not found:", userId)
+		warn("PlayerData not found for immediate save:", userId)
 		return false
 	end
-
-	local playerData = _playerDataCache[userId]
-	local serializedData = playerData:Serialize()
-
+	local serializedData = _playerDataCache[userId]:Serialize()
 	return _DataService.SavePlayerData(userId, serializedData)
 end
 
