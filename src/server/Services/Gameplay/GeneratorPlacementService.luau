@@ -51,7 +51,9 @@ end
 
 -- ── Crée le visuel du brainrot sur le socle ──────────────────────────────────
 local function createGeneratorVisual(slotData, rarity, modelName)
-	local position = slotData.Model.PrimaryPart.Position + Vector3.new(0, 2, 0)
+	local slotCF = slotData.Model.PrimaryPart.CFrame
+	-- Rotation identité : le modèle garde exactement son orientation de Studio (debout)
+	local targetCF = CFrame.new(slotCF.Position + Vector3.new(0, 2, 0))
 
 	-- Tenter de cloner le modèle depuis ServerStorage/GeneratorModels/{rarity}/{modelName}
 	if modelName then
@@ -60,14 +62,39 @@ local function createGeneratorVisual(slotData, rarity, modelName)
 		local template = folder and folder:FindFirstChild(modelName)
 
 		if template and template:IsA("Model") then
+			-- Mesurer l'offset pivot→bas sur le template dans ServerStorage
+			-- On ne considère que les parts visibles et non-minuscules pour éviter les parts fantômes
+			local templatePivotY = template:GetPivot().Position.Y
+			local minY = math.huge
+			for _, part in ipairs(template:GetDescendants()) do
+				if part:IsA("BasePart") and part.Transparency < 0.99 and part.Size.Magnitude > 0.3 then
+					local cf, s = part.CFrame, part.Size / 2
+					for _, sx in ipairs({-1, 1}) do for _, sy in ipairs({-1, 1}) do for _, sz in ipairs({-1, 1}) do
+						local corner = cf:PointToWorldSpace(Vector3.new(s.X*sx, s.Y*sy, s.Z*sz))
+						minY = math.min(minY, corner.Y)
+					end end end
+				end
+			end
+			local templateBottomY = minY < math.huge and minY or templatePivotY
+			local pivotToBottom   = templatePivotY - templateBottomY
+
+			-- HeightOffset optionnel sur le modèle dans Studio pour fine-tuning
+			local heightOffset = template:GetAttribute("HeightOffset") or 0
+
+			-- Placer le clone : base exactement sur le dessus du socle
+			local pedestalTopY = slotData.Model.PrimaryPart.Position.Y + slotData.Model.PrimaryPart.Size.Y / 2
+			local finalPivotY  = pedestalTopY + pivotToBottom + heightOffset
+			local originalRotation = template:GetPivot().Rotation
+
 			local clone = template:Clone()
 			for _, part in ipairs(clone:GetDescendants()) do
 				if part:IsA("BasePart") then
-					part.Anchored   = true
+					part.Anchored  = true
 					part.CanCollide = true
 				end
 			end
-			clone:PivotTo(CFrame.new(position))
+			local slotYAngle = math.atan2(-slotCF.ZVector.X, slotCF.ZVector.Z) + math.pi
+			clone:PivotTo(CFrame.new(slotCF.Position.X, finalPivotY, slotCF.Position.Z) * CFrame.Angles(0, slotYAngle, 0) * originalRotation)
 			clone.Parent = slotData.Model
 			slotData.GeneratorPart = clone
 			return clone
@@ -78,7 +105,7 @@ local function createGeneratorVisual(slotData, rarity, modelName)
 	local part = Instance.new("Part")
 	part.Name      = modelName or ("Generator_" .. rarity)
 	part.Size      = Vector3.new(4, 3, 4)
-	part.Position  = position
+	part.CFrame    = targetCF
 	part.Anchored  = true
 	part.CanCollide = true
 	part.Color     = RARITY_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
