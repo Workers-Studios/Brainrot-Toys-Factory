@@ -29,7 +29,8 @@ local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary" }
 
 local _SpawnerConfig    = nil
 local _PlayerDataService = nil
-local _activeSpawners   = {}  -- [userId_rarity] = true
+local _activeSpawners   = {}  -- [userId_slotName] = true
+local _serverStartTime  = tick()  -- horloge globale de référence
 
 function SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService)
 	_SpawnerConfig     = SpawnerConfig
@@ -37,27 +38,33 @@ function SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService)
 end
 
 -- Démarre la boucle de génération d'un spawner
-function SpawnerService.StartSpawner(userId, rarity, spawnerPart)
+-- slotName sert de clé unique → plusieurs spawners de même rareté coexistent
+function SpawnerService.StartSpawner(userId, rarity, spawnerPart, slotName)
 	if not _SpawnerConfig[rarity] then
 		warn("SpawnerConfig manquant pour:", rarity)
 		return
 	end
 
-	local spawnerId = userId .. "_" .. rarity
+	local spawnRate = _SpawnerConfig[rarity].SpawnRate
+	local spawnerId = userId .. "_" .. (slotName or rarity)
 	_activeSpawners[spawnerId] = true
 
 	task.spawn(function()
 		while _activeSpawners[spawnerId] do
-			task.wait(_SpawnerConfig[rarity].SpawnRate)
+			-- Synchronisation globale : attendre le prochain tick commun
+			local elapsed  = tick() - _serverStartTime
+			local nextTick = (math.floor(elapsed / spawnRate) + 1) * spawnRate
+			task.wait(nextTick - elapsed)
+
 			if not _activeSpawners[spawnerId] then break end
 			SpawnerService.SpawnToy(userId, rarity, spawnerPart)
 		end
 	end)
 end
 
--- Arrête la boucle d'un spawner
-function SpawnerService.StopSpawner(userId, rarity)
-	_activeSpawners[userId .. "_" .. rarity] = nil
+-- Arrête la boucle d'un spawner via sa clé unique (slotName)
+function SpawnerService.StopSpawner(userId, slotName)
+	_activeSpawners[userId .. "_" .. slotName] = nil
 end
 
 -- Roll la rareté du toy selon les DropRates du spawner

@@ -93,7 +93,24 @@ local function createGeneratorVisual(slotData, rarity, modelName)
 					part.CanCollide = true
 				end
 			end
-			local slotYAngle = math.atan2(-slotCF.ZVector.X, slotCF.ZVector.Z) + math.pi
+				local slotYAngle
+			local current = slotData.Model.Parent
+			for _ = 1, 6 do
+				if not current or current == workspace then break end
+				local col  = current:FindFirstChild("Collection")
+				local zone = col and col:FindFirstChild("StructureCollectionZone")
+				local ref  = zone and (zone.PrimaryPart or zone:FindFirstChildWhichIsA("BasePart"))
+				if ref then
+					local toRef = ref.Position - slotCF.Position
+					local rawAngle = math.atan2(toRef.X, toRef.Z) + math.pi
+					local snap = 90
+					slotYAngle = math.rad(math.round(math.deg(rawAngle) / snap) * snap)
+					break
+				end
+				current = current.Parent
+			end
+			slotYAngle = slotYAngle or (math.atan2(-slotCF.ZVector.X, slotCF.ZVector.Z) + math.pi)
+
 			clone:PivotTo(CFrame.new(slotCF.Position.X, finalPivotY, slotCF.Position.Z) * CFrame.Angles(0, slotYAngle, 0) * originalRotation)
 			clone.Parent = slotData.Model
 			slotData.GeneratorPart = clone

@@ -76,25 +76,27 @@ function PlacementService.InitializePlotSlots(userId)
 			continue
 		end
 
-		-- Connect prompt (ownership check)
-		proximityPrompt.Triggered:Connect(function(player)
-			if player.UserId == userId then
-				PlacementService.OnSlotTriggered(player, slot)
-			end
-		end)
-
 		-- Create unique slot key
 		local slotKey = userId .. "_" .. slot.Name
 
 		-- Store slot data
 		_slots[slotKey] = {
-			Model = slot,
-			Part = slotPart,
-			ProximityPrompt = proximityPrompt,
-			Occupied = false,
-			SpawnerPart = nil,
-			UserId = userId
+			Model             = slot,
+			Part              = slotPart,
+			ProximityPrompt   = proximityPrompt,
+			PlacementConnection = nil,
+			PickupConnection    = nil,
+			Occupied          = false,
+			SpawnerPart       = nil,
+			UserId            = userId
 		}
+
+		-- Connect prompt placement (stocké pour pouvoir déconnecter)
+		_slots[slotKey].PlacementConnection = proximityPrompt.Triggered:Connect(function(player)
+			if player.UserId == userId then
+				PlacementService.OnSlotTriggered(player, slot)
+			end
+		end)
 	end
 
 	print("Initialized", #slotsFolder:GetChildren(), "spawner slots for plot", userId)
@@ -102,33 +104,59 @@ end
 
 -- Retourne la rareté du tool spawner équipé (en main ou dans le backpack)
 function PlacementService.GetEquippedSpawnerRarity(player)
+	local function isSpawnerTool(tool)
+		if not tool:IsA("Tool") then return false end
+		if tool:GetAttribute("SpawnerRarity") then return true end
+		return VALID_RARITIES[tool.Name] == true
+	end
+	local function getRarity(tool)
+		return tool:GetAttribute("SpawnerRarity") or tool.Name
+	end
+
 	if player.Character then
 		local tool = player.Character:FindFirstChildOfClass("Tool")
-		if tool and VALID_RARITIES[tool.Name] then
-			return tool.Name
-		end
+		if tool and isSpawnerTool(tool) then return getRarity(tool) end
 	end
 	for _, tool in ipairs(player.Backpack:GetChildren()) do
-		if tool:IsA("Tool") and VALID_RARITIES[tool.Name] then
-			return tool.Name
-		end
+		if isSpawnerTool(tool) then return getRarity(tool) end
 	end
 	return nil
 end
 
--- Donne un Tool spawner au backpack du joueur depuis ServerStorage/SpawnerTools
+local SPAWNER_RARITY_COLORS = {
+	Common    = Color3.fromRGB(180, 180, 180),
+	Uncommon  = Color3.fromRGB(30,  180, 30),
+	Rare      = Color3.fromRGB(0,   100, 255),
+	Epic      = Color3.fromRGB(128, 0,   128),
+	Legendary = Color3.fromRGB(255, 215, 0),
+}
+
+-- Donne un Tool spawner au backpack du joueur (template Studio ou création par code)
 function PlacementService.GiveSpawnerTool(player, rarity)
+	-- Essayer le template Studio en priorité
 	local spawnerTools = ServerStorage:FindFirstChild("SpawnerTools")
-	if not spawnerTools then
-		warn("SpawnerTools folder not found in ServerStorage")
+	local toolTemplate = spawnerTools and spawnerTools:FindFirstChild(rarity)
+	if toolTemplate then
+		local tool = toolTemplate:Clone()
+		tool.Name   = rarity
+		tool.Parent = player.Backpack
 		return
 	end
-	local toolTemplate = spawnerTools:FindFirstChild(rarity)
-	if not toolTemplate then
-		warn("SpawnerTool not found for rarity:", rarity)
-		return
-	end
-	local tool = toolTemplate:Clone()
+
+	-- Fallback : créer le Tool entièrement par code
+	local tool = Instance.new("Tool")
+	tool.Name        = rarity
+	tool.ToolTip     = rarity .. " Spawner"
+	tool.RequiresHandle = true
+	tool:SetAttribute("SpawnerRarity", rarity)
+
+	local handle = Instance.new("Part")
+	handle.Name     = "Handle"
+	handle.Size     = Vector3.new(1, 1, 1)
+	handle.Color    = SPAWNER_RARITY_COLORS[rarity] or Color3.new(1, 1, 1)
+	handle.Material = Enum.Material.SmoothPlastic
+	handle.Parent   = tool
+
 	tool.Parent = player.Backpack
 end
 
@@ -209,7 +237,24 @@ function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName, player)
 	else
 		slotModel.Transparency = 1
 	end
-	_slots[slotKey].Part.ProximityPrompt.Enabled = false
+	-- Déconnecter la connexion placement et passer en mode "Récupérer"
+	if _slots[slotKey].PlacementConnection then
+		_slots[slotKey].PlacementConnection:Disconnect()
+		_slots[slotKey].PlacementConnection = nil
+	end
+
+	local pp = _slots[slotKey].ProximityPrompt
+	pp.ActionText          = "Récupérer"
+	pp.ObjectText          = rarity .. " Spawner"
+	pp.HoldDuration        = 0
+	pp.MaxActivationDistance = 10
+	pp.RequiresLineOfSight = false
+	pp.Enabled             = true
+
+	_slots[slotKey].PickupConnection = pp.Triggered:Connect(function(triggeringPlayer)
+		if triggeringPlayer.UserId ~= userId then return end
+		PlacementService.PickupSpawner(userId, slotName, triggeringPlayer)
+	end)
 
 	playerData:RemoveFromInventory(rarity)
 
@@ -219,13 +264,88 @@ function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName, player)
 	end
 
 	task.spawn(function()
-		_SpawnerService.StartSpawner(userId, rarity, spawnerPart)
+		_SpawnerService.StartSpawner(userId, rarity, spawnerPart, slotName)
 	end)
 
 	table.insert(playerData.placedSpawners, {SlotName = slotName, Rarity = rarity})
 	_PlayerDataService.SavePlayer(userId)
 
 	return true
+end
+
+-- Récupère un spawner placé et le remet dans l'inventaire du joueur
+function PlacementService.PickupSpawner(userId, slotName, player)
+	local slotKey = userId .. "_" .. slotName
+	local slotData = _slots[slotKey]
+	if not slotData or not slotData.Occupied then return end
+
+	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not playerData then return end
+
+	-- Trouver la rareté dans placedSpawners
+	local rarity = nil
+	for i, placed in ipairs(playerData.placedSpawners) do
+		if placed.SlotName == slotName then
+			rarity = placed.Rarity
+			table.remove(playerData.placedSpawners, i)
+			break
+		end
+	end
+	if not rarity then return end
+
+	-- Stopper le spawner
+	_SpawnerService.StopSpawner(userId, slotName)
+
+	-- Détruire le visuel du spawner
+	local spawnerPart = slotData.SpawnerPart
+	if spawnerPart then
+		local spawnerModel = spawnerPart.Parent
+		if spawnerModel and spawnerModel:IsA("Model") then
+			spawnerModel:Destroy()
+		else
+			spawnerPart:Destroy()
+		end
+	end
+	slotData.SpawnerPart = nil
+	slotData.Occupied    = false
+
+	-- Restaurer la visibilité du slot
+	local slotModel = slotData.Model
+	if slotModel:IsA("Model") then
+		for _, part in ipairs(slotModel:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Transparency = 0
+			end
+		end
+	else
+		slotModel.Transparency = 0
+	end
+
+	-- Déconnecter pickup et reconnecter placement
+	if slotData.PickupConnection then
+		slotData.PickupConnection:Disconnect()
+		slotData.PickupConnection = nil
+	end
+
+	local pp = slotData.ProximityPrompt
+	pp.ActionText   = "Placer"
+	pp.ObjectText   = ""
+	pp.HoldDuration = 0
+	pp.Enabled      = true
+
+	slotData.PlacementConnection = pp.Triggered:Connect(function(player)
+		if player.UserId == userId then
+			PlacementService.OnSlotTriggered(player, slotData.Model)
+		end
+	end)
+
+	-- Remettre le spawner dans l'inventaire + redonner le tool
+	playerData:AddToInventory(rarity)
+	if player then
+		PlacementService.GiveSpawnerTool(player, rarity)
+	end
+
+	_PlayerDataService.SavePlayer(userId)
 end
 
 -- Checks if a slot is available for placement
@@ -534,11 +654,29 @@ function PlacementService.RestorePlacedSpawners(userId)
 		else
 			slotModel.Transparency = 1
 		end
-		slotData.Part.ProximityPrompt.Enabled = false
+		-- Déconnecter placement et passer en mode "Récupérer"
+		if slotData.PlacementConnection then
+			slotData.PlacementConnection:Disconnect()
+			slotData.PlacementConnection = nil
+		end
+
+		local pp = slotData.ProximityPrompt
+		pp.ActionText          = "Récupérer"
+		pp.ObjectText          = rarity .. " Spawner"
+		pp.HoldDuration        = 0
+		pp.MaxActivationDistance = 10
+		pp.RequiresLineOfSight = false
+		pp.Enabled             = true
+
+		local capturedSlotName = slotName
+		slotData.PickupConnection = pp.Triggered:Connect(function(triggeringPlayer)
+			if triggeringPlayer.UserId ~= userId then return end
+			PlacementService.PickupSpawner(userId, capturedSlotName, triggeringPlayer)
+		end)
 
 		-- ⭐ Restart spawner avec spawnerPart
 		task.spawn(function()
-			_SpawnerService.StartSpawner(userId, rarity, spawnerPart)
+			_SpawnerService.StartSpawner(userId, rarity, spawnerPart, slotName)
 		end)
 
 	end
