@@ -227,6 +227,12 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 		warn("Error restoring generators:", err5)
 	end
 
+	-- Sync revenue/s après restore (délai pour que le client soit connecté à l'event)
+	task.spawn(function()
+		task.wait(1)
+		GeneratorPlacementService.SyncRevenueToClient(userId)
+	end)
+
 	print("✅ Player connected:", player.Name)
 end
 

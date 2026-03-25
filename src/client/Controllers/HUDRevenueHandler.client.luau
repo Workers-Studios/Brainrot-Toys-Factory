@@ -11,19 +11,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Cherche le label MoneyPerSecond dans le HUD
+-- Cherche le label MoneyPerSecond dans le HUD (cherche récursivement)
 local hud = playerGui:WaitForChild("HUD")
 local background = hud:WaitForChild("Background")
-local moneyPerSecondLabel = background:FindFirstChild("MoneyPerSecond", true)
+
+-- Chercher récursivement dans tout le HUD (pas seulement Background)
+local moneyPerSecondLabel = hud:FindFirstChild("MoneyPerSecond", true)
 
 if not moneyPerSecondLabel then
-	warn("HUDRevenueHandler: Label 'MoneyPerSecond' introuvable dans HUD")
+	warn("[HUDRevenue] Label 'MoneyPerSecond' introuvable dans HUD — vérifier le nom dans Studio")
 	return
 end
 
-local function formatRevenue(amount)
-	return "$" .. tostring(amount) .. "/s"
-end
+print("[HUDRevenue] Label trouvé:", moneyPerSecondLabel:GetFullName())
 
 -- Écouter les mises à jour de revenu du serveur
 local onRevenueChanged = ReplicatedStorage
@@ -31,6 +31,9 @@ local onRevenueChanged = ReplicatedStorage
 	:WaitForChild("Events")
 	:WaitForChild("OnRevenuePerSecondChanged")
 
+print("[HUDRevenue] Event connecté")
+
 onRevenueChanged.OnClientEvent:Connect(function(totalRevenue)
-	moneyPerSecondLabel.Text = formatRevenue(totalRevenue)
+	print("[HUDRevenue] Reçu:", totalRevenue)
+	moneyPerSecondLabel.Text = tostring(totalRevenue) .. "/s"
 end)

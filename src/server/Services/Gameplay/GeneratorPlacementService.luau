@@ -344,8 +344,10 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 			GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
 		end)
 	end
+end
 
-	-- Notifier le client du total restauré
+-- Envoie le total de revenus/s au client (appelé depuis PlayerLifecycleHandler après un délai)
+function GeneratorPlacementService.SyncRevenueToClient(userId)
 	fireRevenueUpdate(userId)
 end
 
