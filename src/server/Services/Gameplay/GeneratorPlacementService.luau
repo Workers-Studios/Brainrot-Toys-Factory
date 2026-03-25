@@ -11,12 +11,41 @@
 local GeneratorPlacementService = {}
 
 local ServerStorage    = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PlotService      = require(script.Parent.Parent.Core.PlotService)
 local PlacementService = require(script.Parent.PlacementService)
 
 local _PlayerDataService = nil
 local _GeneratorService  = nil
 local _generatorSlots    = {}  -- [userId_slotName] = slotData
+
+-- RemoteEvent pour notifier le client du total de revenus/s de ses brainrots
+local _eventsFolder = ReplicatedStorage:WaitForChild("RemoteInterface"):WaitForChild("Events")
+local _OnRevenuePerSecondChanged = _eventsFolder:FindFirstChild("OnRevenuePerSecondChanged")
+if not _OnRevenuePerSecondChanged then
+	_OnRevenuePerSecondChanged = Instance.new("RemoteEvent")
+	_OnRevenuePerSecondChanged.Name = "OnRevenuePerSecondChanged"
+	_OnRevenuePerSecondChanged.Parent = _eventsFolder
+end
+
+-- Calcule le total des RevenuePerSecond de tous les brainrots posés d'un joueur
+local function getTotalRevenue(userId)
+	local playerData = _PlayerDataService and _PlayerDataService.GetPlayerData(userId)
+	if not playerData then return 0 end
+	local total = 0
+	for _, placed in ipairs(playerData.placedGenerators) do
+		total += (placed.RevenuePerSecond or 0)
+	end
+	return total
+end
+
+-- Notifie le client de la nouvelle somme de revenus/s
+local function fireRevenueUpdate(userId)
+	local player = game:GetService("Players"):GetPlayerByUserId(userId)
+	if player then
+		_OnRevenuePerSecondChanged:FireClient(player, getTotalRevenue(userId))
+	end
+end
 
 local RARITY_COLORS = {
 	Common    = Color3.fromRGB(180, 180, 180),
@@ -273,6 +302,7 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	})
 
 	_PlayerDataService.SavePlayer(userId)
+	fireRevenueUpdate(userId)
 end
 
 -- ── Restauration des générateurs à la reconnexion ────────────────────────────
@@ -314,6 +344,9 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 			GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
 		end)
 	end
+
+	-- Notifier le client du total restauré
+	fireRevenueUpdate(userId)
 end
 
 -- ── Récupère un générateur posé et remet l'oeuf dans l'inventaire ────────────
@@ -381,6 +414,7 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
 
 	_PlayerDataService.SavePlayer(userId)
+	fireRevenueUpdate(userId)
 end
 
 return GeneratorPlacementService
