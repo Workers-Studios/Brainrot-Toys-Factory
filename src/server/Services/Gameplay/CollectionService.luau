@@ -14,10 +14,6 @@ local _quotaRequirements = {}  -- [rarity] = nombre requis
 local _toyOwners         = {}
 local _processingQuota   = {}  -- [userId_rarity] = true : guard contre appels concurrents
 
-local _OnNotification = game:GetService("ReplicatedStorage")
-	:WaitForChild("RemoteInterface")
-	:WaitForChild("Events")
-	:WaitForChild("OnNotification")
 
 -- Initialise le service
 -- @param PlayerDataService : service - données joueur
@@ -125,9 +121,6 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 		local PlacementService = require(script.Parent.PlacementService)
 		PlacementService.GiveEggTool(player, rarity)
 
-		if _OnNotification then
-			_OnNotification:FireClient(player, "Oeuf " .. rarity .. " obtenu !", "SUCCESS")
-		end
 	end
 
 	-- Reset quota
