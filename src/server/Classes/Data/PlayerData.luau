@@ -1,132 +1,221 @@
 --[[
-	Admin commands system with UI support
-	Only authorized users can execute admin commands via secure RemoteEvents
+	PlayerData class - Manages individual player progression data
+	Encapsulates all player state including money, inventory, quotas, and placements
 	
-	Commands:
-	- GiveMoney: Add money to player
-	- SetMoney: Set player money to exact amount
-	- GiveSpawner: Give spawner to player inventory
+	Structure:
+	- money: Current cash balance
+	- inventory: Spawners available for placement {Common = X, Rare = Y, ...}
+	- generatorInventory: Generators unlocked via quotas {GeneratorType = {Common = X, ...}}
+	- quotaProgress: Collection progress toward generators {ToyType = {Common = X, ...}}
+	- placedSpawners: Active spawners on plot [{SlotName = "...", Rarity = "..."}]
+	- placedGenerators: Active generators [{SlotName = "...", GeneratorType = "...", Rarity = "..."}]
+	
+	All modifications trigger auto-save via PlayerDataService
 ]]
 
-local AdminService = {}
+local PlayerData = {}
+PlayerData.__index = PlayerData
 
-local _PlayerDataService = nil
-local _MoneyService = nil
+-- Creates new PlayerData instance with default values
+-- @param userId: number - Player's Roblox user ID
+-- @return PlayerData - New player data instance
+function PlayerData.new(userId)
+	local self = setmetatable({}, PlayerData)
+	
+	self.userId = userId
+	self.money = 100  -- Starting cash
+	self.rebirthLevel = 0
 
--- Users Admin ID
-local ADMIN_USER_IDS = {
-	10244275965, -- DorianABDS 
-}
+	-- Spawner inventory (items that can be placed on slots)
+	self.inventory = {
+		Common    = 0,
+		Uncommon  = 0,
+		Rare      = 0,
+		Epic      = 0,
+		Legendary = 0,
+	}
+	
+	-- Generator inventory (unlocked via quotas)
+	self.generatorInventory = {
+		-- Format: [GeneratorType] = count
+		-- Example: Common_Generator = 2, Rare_Generator = 1
+	}
 
--- Checks if player is admin
+	-- Quota progress toward unlocking generators
+	self.quotaProgress = {
+		-- Format: [Rarity] = currentCount
+		-- Example: Common = 5, Rare = 2
+	}
+	
+	-- Physical spawners placed on plot
+	self.placedSpawners = {
+		-- Array of {SlotName = "SpawnerSlots1", Rarity = "Common"}
+	}
+	
+	-- Physical generators placed on plot
+	self.placedGenerators = {
+		-- Array of {SlotName = "GeneratorSlot1", GeneratorType = "...", Rarity = "Common"}
+	}
+
+	-- Brainrots dans l'inventaire (récupérés depuis les socles, pas encore replacés)
+	self.brainrotInventory = {}
+
+	return self
+end
+
+-- Loads existing player data from DataStore
 -- @param userId: number - Player's user ID
--- @return boolean - true if admin
-local function isAdmin(userId)
-	for _, adminId in ipairs(ADMIN_USER_IDS) do
-		if userId == adminId then
+-- @param savedData: table - Data retrieved from DataStore
+-- @return PlayerData - Loaded player data instance
+function PlayerData.load(userId, savedData)
+	local self = setmetatable({}, PlayerData)
+	
+	self.userId = userId
+	self.money = savedData.money or 100
+	self.rebirthLevel = savedData.rebirthLevel or 0
+	self.inventory = savedData.inventory or {Common = 0, Uncommon = 0, Rare = 0, Epic = 0, Legendary = 0}
+	self.generatorInventory = savedData.generatorInventory or {}
+	self.quotaProgress = savedData.quotaProgress or {}
+	self.placedSpawners = savedData.placedSpawners or {}
+	self.placedGenerators  = savedData.placedGenerators  or {}
+	self.brainrotInventory = savedData.brainrotInventory or {}
+
+	return self
+end
+
+-- Serializes player data for DataStore storage
+-- @return table - Data ready for saving
+function PlayerData:Serialize()
+	return {
+		money = self.money,
+		rebirthLevel = self.rebirthLevel,
+		inventory = self.inventory,
+		generatorInventory = self.generatorInventory,
+		quotaProgress = self.quotaProgress,
+		placedSpawners = self.placedSpawners,
+		placedGenerators  = self.placedGenerators,
+		brainrotInventory = self.brainrotInventory,
+	}
+end
+
+-- Adds money to player balance
+-- @param amount: number - Money to add
+function PlayerData:AddMoney(amount)
+	self.money = self.money + amount
+end
+
+-- Removes money from player balance (with validation)
+-- @param amount: number - Money to remove
+-- @return boolean - true if successful, false if insufficient funds
+function PlayerData:RemoveMoney(amount)
+	if self.money >= amount then
+		self.money = self.money - amount
+		return true
+	end
+	return false
+end
+
+-- Returns current money balance
+-- @return number - Current money amount
+function PlayerData:GetMoney()
+	return self.money
+end
+
+-- Alias pour RemoveMoney, utilisé par MoneyService
+-- @param amount: number - Money to deduct
+-- @return boolean - true if successful
+function PlayerData:DeductMoney(amount)
+	return self:RemoveMoney(amount)
+end
+
+-- Checks if player has item in inventory
+-- @param rarity: string - Item rarity to check
+-- @return boolean - true if player has at least 1
+function PlayerData:HasInInventory(rarity)
+	return self.inventory[rarity] and self.inventory[rarity] > 0
+end
+
+-- Adds spawner to inventory
+-- @param rarity: string - Spawner rarity
+-- @param count: number - Amount to add (default 1)
+function PlayerData:AddToInventory(rarity, count)
+	count = count or 1
+	self.inventory[rarity] = (self.inventory[rarity] or 0) + count
+end
+
+-- Removes spawner from inventory
+-- @param rarity: string - Spawner rarity
+-- @param count: number - Amount to remove (default 1)
+-- @return boolean - true if successful
+function PlayerData:RemoveFromInventory(rarity, count)
+	count = count or 1
+	if self.inventory[rarity] and self.inventory[rarity] >= count then
+		self.inventory[rarity] = self.inventory[rarity] - count
+		return true
+	end
+	return false
+end
+
+-- Adds an egg to inventory
+-- @param rarity: string - Rarity of the egg (ex: "Common", "Rare")
+-- @param count: number - Amount to add (default 1)
+function PlayerData:AddGenerator(rarity, count)
+	count = count or 1
+	self.generatorInventory[rarity] = (self.generatorInventory[rarity] or 0) + count
+end
+
+-- Removes an egg from inventory
+-- @param rarity: string - Rarity of the egg (ex: "Common", "Rare")
+-- @param count: number - Amount to remove (default 1)
+-- @return boolean - true if successful
+function PlayerData:RemoveGenerator(rarity, count)
+	count = count or 1
+	if self.generatorInventory[rarity] and self.generatorInventory[rarity] >= count then
+		self.generatorInventory[rarity] = self.generatorInventory[rarity] - count
+		return true
+	end
+	return false
+end
+
+-- Ajoute un brainrot récupéré dans l'inventaire
+function PlayerData:AddBrainrot(name, modelName, rarity, revenuePerSecond)
+	table.insert(self.brainrotInventory, {
+		Name             = name,
+		ModelName        = modelName or "",
+		Rarity           = rarity,
+		RevenuePerSecond = revenuePerSecond,
+	})
+end
+
+-- Retire un brainrot de l'inventaire (premier trouvé par nom)
+-- @return boolean - true si trouvé et retiré
+function PlayerData:RemoveBrainrot(name)
+	for i, b in ipairs(self.brainrotInventory) do
+		if b.Name == name then
+			table.remove(self.brainrotInventory, i)
 			return true
 		end
 	end
 	return false
 end
 
--- Initializes admin service and creates RemoteEvents
--- @param PlayerDataService: service
--- @param MoneyService: service
-function AdminService.Init(PlayerDataService, MoneyService)
-	_PlayerDataService = PlayerDataService
-	_MoneyService = MoneyService
-
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local remoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
-
-	-- Create Admin folder in RemoteInterface
-	local adminFolder = Instance.new("Folder")
-	adminFolder.Name = "Admin"
-	adminFolder.Parent = remoteInterface
-
-	-- Create RemoteFunction to check if player is admin
-	local isAdminRemote = Instance.new("RemoteFunction")
-	isAdminRemote.Name = "IsAdmin"
-	isAdminRemote.Parent = adminFolder
-
-	isAdminRemote.OnServerInvoke = function(player)
-		return isAdmin(player.UserId)
-	end
-
-	-- Create RemoteEvent for admin commands
-	local executeCommandRemote = Instance.new("RemoteEvent")
-	executeCommandRemote.Name = "ExecuteCommand"
-	executeCommandRemote.Parent = adminFolder
-
-	executeCommandRemote.OnServerEvent:Connect(function(player, commandType, targetName, value)
-		AdminService.ExecuteCommand(player, commandType, targetName, value)
-	end)
-
-	print("AdminService initialized")
+-- Increments quota progress for a rarity
+-- @param rarity: string - Rarity of toy collected
+function PlayerData:IncrementQuota(rarity)
+	self.quotaProgress[rarity] = (self.quotaProgress[rarity] or 0) + 1
 end
 
--- Executes admin command from UI
--- @param admin: Player - Admin who sent command
--- @param commandType: string - Command type (GiveMoney, SetMoney, GiveSpawner)
--- @param targetName: string - Target player name
--- @param value: any - Command value (amount or rarity)
-function AdminService.ExecuteCommand(admin, commandType, targetName, value)
-	-- Verify admin
-	if not isAdmin(admin.UserId) then
-		warn("Unauthorized command attempt from", admin.Name)
-		return
-	end
-
-	-- Find target player
-	local target = game.Players:FindFirstChild(targetName)
-	if not target then
-		warn("Admin: Player not found:", targetName)
-		return
-	end
-
-	-- Execute command
-	if commandType == "GiveMoney" then
-		local amount = tonumber(value)
-		if not amount or amount <= 0 then
-			warn("Admin: Invalid amount")
-			return
-		end
-
-		_MoneyService.AddMoney(target.UserId, amount)
-		print(string.format("✅ Admin %s gave %d$ to %s", admin.Name, amount, targetName))
-
-	elseif commandType == "SetMoney" then
-		local amount = tonumber(value)
-		if not amount or amount < 0 then
-			warn("Admin: Invalid amount")
-			return
-		end
-
-		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
-		if playerData then
-			playerData.money = amount
-			local OnMoneyChanged = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnMoneyChanged
-			OnMoneyChanged:FireClient(target, amount)
-			print(string.format("✅ Admin %s set %s money to %d$", admin.Name, targetName, amount))
-		end
-
-	elseif commandType == "GiveSpawner" then
-		local rarity = value
-		local validRarities = {"Common", "Rare", "Epic", "Legendary"}
-
-		if not table.find(validRarities, rarity) then
-			warn("Admin: Invalid rarity")
-			return
-		end
-
-		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
-		if playerData then
-			playerData:AddToInventory(rarity)
-			_PlayerDataService.SavePlayer(target.UserId)
-			print(string.format("✅ Admin %s gave %s spawner to %s", admin.Name, rarity, targetName))
-		end
-	end
+-- Gets current quota progress
+-- @param rarity: string - Rarity tier
+-- @return number - Current progress count
+function PlayerData:GetQuotaProgress(rarity)
+	return self.quotaProgress[rarity] or 0
 end
 
-return AdminService
+-- Resets quota for a specific rarity
+-- @param rarity: string - Rarity tier
+function PlayerData:ResetQuota(rarity)
+	self.quotaProgress[rarity] = 0
+end
+
+return PlayerData

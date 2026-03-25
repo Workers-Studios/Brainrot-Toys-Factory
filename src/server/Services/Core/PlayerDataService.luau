@@ -10,8 +10,8 @@
 
 	Cache structure: {[userId] = PlayerData instance}
 
-	SavePlayer   : debounced (10s delay) — pour les saves fréquentes
-	SavePlayerImmediate : bypass le debounce — pour les events critiques
+	SavePlayer          : debounced (6s delay) — pour les saves fréquentes
+	SavePlayerImmediate : bypass le debounce — pour les events critiques (déconnexion, quota complété)
 ]]
 
 local PlayerDataService = {}
@@ -19,9 +19,9 @@ local PlayerDataService = {}
 local _playerDataCache = {}
 local _DataService     = nil
 local _PlayerData      = nil
+local _pendingSaves    = {}  -- [userId] = task thread (debounce)
 
-local _pendingSaves    = {}       -- [userId] = true si une save est en attente
-local SAVE_DEBOUNCE    = 10       -- secondes entre deux saves automatiques
+local SAVE_DEBOUNCE = 6  -- seconds (DataStore min interval per key)
 
 -- Initializes service with required dependencies
 -- @param DataService: service - Data persistence service
@@ -36,8 +36,8 @@ end
 -- @return PlayerData - Cached PlayerData instance
 function PlayerDataService.LoadPlayer(userId)
 	local loadedData = _DataService.LoadPlayerData(userId)
-
 	local playerData
+
 	if loadedData then
 		playerData = _PlayerData.load(userId, loadedData)
 	else
@@ -73,6 +73,25 @@ function PlayerDataService.RemoveGenerator(userId, rarity)
 	return false
 end
 
+-- Ajoute un brainrot récupéré dans l'inventaire persistant
+function PlayerDataService.AddBrainrot(userId, name, modelName, rarity, revenuePerSecond)
+	local playerData = PlayerDataService.GetPlayerData(userId)
+	if playerData then
+		playerData:AddBrainrot(name, modelName, rarity, revenuePerSecond)
+		return true
+	end
+	return false
+end
+
+-- Retire un brainrot de l'inventaire persistant
+function PlayerDataService.RemoveBrainrot(userId, name)
+	local playerData = PlayerDataService.GetPlayerData(userId)
+	if playerData then
+		return playerData:RemoveBrainrot(name)
+	end
+	return false
+end
+
 -- Returns player's generator inventory
 -- @param userId: number - Player's user ID
 -- @return table|nil - Generator inventory or nil if PlayerData not found
@@ -84,11 +103,11 @@ function PlayerDataService.GetGeneratorInventory(userId)
 	return nil
 end
 
--- Saves player data to DataStore (debounced — max 1 save per SAVE_DEBOUNCE seconds)
+-- Saves player data to DataStore (debounced - max 1 save per SAVE_DEBOUNCE seconds)
 -- Pour les saves peu critiques (incrément quota, etc.)
 -- @param userId: number - Player's user ID
 function PlayerDataService.SavePlayer(userId)
-	if _pendingSaves[userId] then return end  -- déjà en attente
+	if _pendingSaves[userId] then return end
 	_pendingSaves[userId] = true
 
 	task.delay(SAVE_DEBOUNCE, function()
@@ -105,13 +124,19 @@ end
 -- @param userId: number - Player's user ID
 -- @return boolean - true if saved successfully
 function PlayerDataService.SavePlayerImmediate(userId)
-	_pendingSaves[userId] = nil  -- annule la save déboncée en attente
+	-- Cancel debounced save if pending
+	if _pendingSaves[userId] then
+		task.cancel(_pendingSaves[userId])
+		_pendingSaves[userId] = nil
+	end
+
 	if not _playerDataCache[userId] then
 		warn("PlayerData not found for immediate save:", userId)
 		return false
 	end
-	local serializedData = _playerDataCache[userId]:Serialize()
-	return _DataService.SavePlayerData(userId, serializedData)
+
+	local playerData = _playerDataCache[userId]
+	return _DataService.SavePlayerData(userId, playerData:Serialize())
 end
 
 -- Returns cached PlayerData instance

@@ -39,7 +39,6 @@ function DataService.SavePlayerData(userId, dataTable)
 		end)
 
 		if success and userId then
-			print("Save successful for", userId)
 			return true
 		else
 			warn("Save error for", userId, "attempt", attempt, ":", error)
@@ -67,7 +66,6 @@ function DataService.LoadPlayerData(userId)
 		end)
 
 		if success and userId then
-			print("Load successful for", userId)
 			return result
 		else
 			warn("Load error for", userId, "attempt", attempt, ":", result)

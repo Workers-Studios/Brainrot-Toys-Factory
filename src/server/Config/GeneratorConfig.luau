@@ -1,51 +1,54 @@
 --[[
-	Generator configuration and balancing
-	Defines passive income rates per generator type and rarity
-	
-	Structure per generator:
-	- Name: Display name
-	- Description: UI description
-	- BaseRevenuePerSecond: Income rates by rarity ($/second)
-	- PlacementCost: Cost to place (0 = free)
-	- ModelName: Reference to 3D model in ServerStorage/Templates/
-	
-	Note: Generators are obtained by completing toy collection quotas
+	Configuration des générateurs (brainrots) par rareté d'oeuf
+
+	Quand un oeuf est posé sur un socle, on pioche aléatoirement un brainrot
+	dans la Pool de la rareté de l'oeuf, pondéré par Weight.
+
+	Structure par rareté :
+	  Pool = liste de brainrots disponibles
+	    Name             : nom affiché
+	    ModelName        : nom du modèle dans ServerStorage/GeneratorModels/{Rarity}/
+	    Weight           : poids de tirage (relatif aux autres dans la pool)
+	    RevenuePerSecond : argent généré par seconde
+
+	Note : ModelName peut être nil → fallback Part colorée
 ]]
 
 local GeneratorConfig = {
 
-	Tralalero_Tralala_Generator = {
-		Name = "Tralalero Tralala Generator",
-		Description = "Generates money passively",
-
-		-- Base income per second by rarity (before rebirth multipliers)
-		BaseRevenuePerSecond = {
-			Common = 10,
-			Rare = 50,
-			Epic = 200,
-			Legendary = 1000,
+	Common = {
+		Pool = {
+			{ Name = "Agarrini La Pallini", ModelName = "Agarrini La Pallini", Weight = 60, RevenuePerSecond = 10 },
+			{ Name = "Avocadini Guffo",     ModelName = "Avocadini Guffo",     Weight = 40, RevenuePerSecond = 16 },
 		},
-
-		-- Cost to place generator (0 = free)
-		PlacementCost = 0,
-
-		-- 3D model reference (create in ServerStorage/Templates/)
-		ModelName = "TralaleroTralalaGenerator",
 	},
 
-	BrrBrrPatapim = {
-		Name = "Brr Brr Patapim Generator",
-		Description = "Generates money passively",
-
-		BaseRevenuePerSecond = {
-			Common = 10,
-			Rare = 50,
-			Epic = 200,
-			Legendary = 1000,
+	Uncommon = {
+		Pool = {
+			{ Name = "Ballerina Cappuccina", ModelName = "Ballerina Cappuccina", Weight = 55, RevenuePerSecond = 35 },
+			{ Name = "Ballerino Lololo",     ModelName = "Ballerino Lololo",     Weight = 45, RevenuePerSecond = 50 },
 		},
+	},
 
-		PlacementCost = 0,
-		ModelName = "BrrBrrPatapimGenerator",
+	Rare = {
+		Pool = {
+			{ Name = "Bambini Crostini", ModelName = "Bambini Crostini", Weight = 55, RevenuePerSecond = 120 },
+			{ Name = "Banana Dancana",   ModelName = "Banana Dancana",   Weight = 45, RevenuePerSecond = 180 },
+		},
+	},
+
+	Epic = {
+		Pool = {
+			{ Name = "Brainrot Epic 1", ModelName = nil, Weight = 70, RevenuePerSecond = 500 },
+			{ Name = "Brainrot Epic 2", ModelName = nil, Weight = 30, RevenuePerSecond = 800 },
+		},
+	},
+
+	Legendary = {
+		Pool = {
+			{ Name = "Brainrot Legendaire 1", ModelName = nil, Weight = 80, RevenuePerSecond = 2500 },
+			{ Name = "Brainrot Legendaire 2", ModelName = nil, Weight = 20, RevenuePerSecond = 5000 },
+		},
 	},
 }
 

@@ -38,27 +38,15 @@ function AdminService.Init(PlayerDataService, MoneyService)
 	_MoneyService = MoneyService
 
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local remoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
+	local adminFolder = ReplicatedStorage.RemoteInterface:WaitForChild("Admin")
 
-	-- Create Admin folder in RemoteInterface
-	local adminFolder = Instance.new("Folder")
-	adminFolder.Name = "Admin"
-	adminFolder.Parent = remoteInterface
-
-	-- Create RemoteFunction to check if player is admin
-	local isAdminRemote = Instance.new("RemoteFunction")
-	isAdminRemote.Name = "IsAdmin"
-	isAdminRemote.Parent = adminFolder
-
+	-- Connecter les handlers sur les remotes pré-créées par ServerInit
+	local isAdminRemote = adminFolder:WaitForChild("IsAdmin")
 	isAdminRemote.OnServerInvoke = function(player)
 		return isAdmin(player.UserId)
 	end
 
-	-- Create RemoteEvent for admin commands
-	local executeCommandRemote = Instance.new("RemoteEvent")
-	executeCommandRemote.Name = "ExecuteCommand"
-	executeCommandRemote.Parent = adminFolder
-
+	local executeCommandRemote = adminFolder:WaitForChild("ExecuteCommand")
 	executeCommandRemote.OnServerEvent:Connect(function(player, commandType, targetName, value)
 		AdminService.ExecuteCommand(player, commandType, targetName, value)
 	end)
@@ -108,6 +96,7 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 			playerData.money = amount
 			local OnMoneyChanged = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnMoneyChanged
 			OnMoneyChanged:FireClient(target, amount)
+			_PlayerDataService.SavePlayer(target.UserId)
 			print(string.format("✅ Admin %s set %s money to %d$", admin.Name, targetName, amount))
 		end
 

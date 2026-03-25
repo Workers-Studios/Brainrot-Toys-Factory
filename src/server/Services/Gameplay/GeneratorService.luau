@@ -13,10 +13,11 @@
 
 local GeneratorService = {}
 
-local _GeneratorConfig = nil
-local _MoneyService = nil
-local _ToyConfig = nil
-local _activeGenerators = {}  -- Tracks active generators: {userId_generatorType = true}
+local _GeneratorConfig  = nil
+local _MoneyService     = nil
+local _ToyConfig        = nil
+local _activeGenerators = {}  -- [generatorId] = true
+local _serverStartTime  = tick()  -- horloge globale partagée
 
 -- Initializes service with required dependencies
 -- @param GeneratorConfig: table - Generator configuration data
@@ -51,11 +52,8 @@ function GeneratorService.CreateGenerator(userId, toyType, rarity)
 	local incomeRate = generatorConfig.BaseRevenuePerSecond[rarity]
 	local incomeInterval = 1  -- Generate income every 1 second
 
-	-- Mark generator as active
-	_activeGenerators[userId .. "_" .. generatorType] = true
-
-	-- Start income generation loop
-	GeneratorService.StartGeneratorLoop(userId, generatorType, incomeRate, incomeInterval)
+	-- Start income generation loop (key = userId_generatorType for StopAllGenerators compatibility)
+	GeneratorService.StartGeneratorLoop(userId, userId .. "_" .. generatorType, incomeRate, incomeInterval)
 
 	print("Generator created:", generatorType, "for", userId)
 end
@@ -66,15 +64,24 @@ end
 -- @param incomeRate: number - Money generated per interval
 -- @param incomeInterval: number - Seconds between income generation
 function GeneratorService.StartGeneratorLoop(userId, generatorId, incomeRate, incomeInterval)
-	task.spawn(function()
-		_activeGenerators[generatorId] = true
+	_activeGenerators[generatorId] = true
 
+	task.spawn(function()
 		while _activeGenerators[generatorId] do
-			task.wait(incomeInterval)
+			-- Synchronisation globale : tous les générateurs tirent au même tick
+			local elapsed  = tick() - _serverStartTime
+			local nextTick = (math.floor(elapsed / incomeInterval) + 1) * incomeInterval
+			task.wait(nextTick - elapsed)
+
+			if not _activeGenerators[generatorId] then break end
 			_MoneyService.AddMoney(userId, incomeRate)
 		end
-		print("Generator stopped:", generatorId)
 	end)
+end
+
+-- Stoppe un générateur spécifique par son ID
+function GeneratorService.StopGenerator(generatorId)
+	_activeGenerators[generatorId] = nil
 end
 
 -- Stops all generators for a player (called on disconnect)

@@ -14,6 +14,7 @@
 local ShopService = {}
 
 local AntiExploitService = require(game.ServerScriptService.Services.Core.AntiExploitService)
+local PlacementService = require(game.ServerScriptService.Services.Gameplay.PlacementService)
 
 local _SpawnerConfig = nil
 local _MoneyService = nil
@@ -73,9 +74,14 @@ function ShopService.PurchaseSpawner(userId, rarity)
 	_MoneyService.DeductMoney(userId, price)
 	playerData:AddToInventory(rarity)
 
-	-- Notify success
+	-- Donner le tool au joueur
+	local player = game.Players:GetPlayerByUserId(userId)
+	if player then
+		PlacementService.GiveSpawnerTool(player, rarity)
+	end
+
 	if _OnNotification then
-		_OnNotification:FireClient(game.Players:GetPlayerByUserId(userId), "You have successfully purchased " .. rarity .. " spawner!", "SUCCESS")
+		_OnNotification:FireClient(player, rarity .. " spawner acheté !", "SUCCESS")
 	end
 
 	return true, "Purchase successful"
