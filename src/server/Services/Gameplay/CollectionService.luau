@@ -12,6 +12,7 @@ local _GeneratorService  = nil
 local _ToyConfig         = nil
 local _quotaRequirements = {}  -- [rarity] = nombre requis
 local _toyOwners         = {}
+local _processingQuota   = {}  -- [userId_rarity] = true : guard contre appels concurrents
 
 local _OnNotification = game:GetService("ReplicatedStorage")
 	:WaitForChild("RemoteInterface")
@@ -83,8 +84,7 @@ function CollectionService.IncrementQuota(userId, rarity)
 
 	playerData.quotaProgress[rarity] += 1
 
-	-- Save déboncé
-	_PlayerDataService.SavePlayer(userId)
+	-- Pas de save ici : le quota est sauvegardé lors de la complétion ou au disconnect
 
 	-- Notifier le client
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated
@@ -103,6 +103,10 @@ end
 -- @param rarity : string - rareté à vérifier
 -- @return boolean - true si quota complété
 function CollectionService.CheckQuotaComplete(userId, rarity)
+	-- Guard contre double-exécution concurrente pour le même joueur+rareté
+	local key = userId .. "_" .. rarity
+	if _processingQuota[key] then return false end
+
 	local playerData = _PlayerDataService.GetPlayerData(userId)
 	if not playerData then return false end
 
@@ -110,6 +114,8 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 	local current  = playerData.quotaProgress[rarity] or 0
 
 	if current < required then return false end
+
+	_processingQuota[key] = true  -- Verrouiller avant tout yield potentiel
 
 	-- Récompense : oeuf de la rareté du toy collecté
 	_PlayerDataService.AddGenerator(userId, rarity)
@@ -127,14 +133,16 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 	-- Reset quota
 	playerData.quotaProgress[rarity] = 0
 
-	-- Save immédiat (récompense critique)
-	_PlayerDataService.SavePlayerImmediate(userId)
+	-- Save déboncé (le debounce suffit, pas besoin d'immédiat ici)
+	_PlayerDataService.SavePlayer(userId)
 
 	-- Notifier le client du reset
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated
 	if player then
 		OnQuotaUpdated:FireClient(player, rarity, 0, required)
 	end
+
+	_processingQuota[key] = nil  -- Déverrouiller
 
 	return true
 end
