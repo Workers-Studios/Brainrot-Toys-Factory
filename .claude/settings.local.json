@@ -4,7 +4,10 @@
       "Bash(sed -i '280s/.*/\\\\t\\\\t\\\\t-- Créer un point de référence au SOMMET du modèle \\(surface de spawn\\)/' /e/Code/Projets_personnels/Brainrot-Toys-Factory/src/server/Services/Gameplay/PlacementService.luau)",
       "Bash(sed -i '288s/.*/\\\\t\\\\t\\\\tanchor.CFrame = CFrame.new\\(boundingCF.Position + Vector3.new\\(0, boundingSize.Y \\\\/ 2, 0\\)\\)/' /e/Code/Projets_personnels/Brainrot-Toys-Factory/src/server/Services/Gameplay/PlacementService.luau)",
       "Bash(sed -i '279s/.*/\\\\t\\\\t\\\\t-- Point de référence au centre du modèle \\(les toys spawns à la base\\)/' /e/Code/Projets_personnels/Brainrot-Toys-Factory/src/server/Services/Gameplay/PlacementService.luau)",
-      "Bash(sed -i '288s/.*/\\\\t\\\\t\\\\tanchor.CFrame = boundingCF/' /e/Code/Projets_personnels/Brainrot-Toys-Factory/src/server/Services/Gameplay/PlacementService.luau)"
+      "Bash(sed -i '288s/.*/\\\\t\\\\t\\\\tanchor.CFrame = boundingCF/' /e/Code/Projets_personnels/Brainrot-Toys-Factory/src/server/Services/Gameplay/PlacementService.luau)",
+      "Bash(find /e/Code/Projets_personnels/Brainrot-Toys-Factory/src -name GeneratorService*)",
+      "Bash(find /e/Code/Projets_personnels/Brainrot-Toys-Factory/src -name *.luau)",
+      "Bash(xargs grep:*)"
     ]
   }
 }
