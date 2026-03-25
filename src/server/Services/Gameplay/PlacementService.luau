@@ -468,6 +468,85 @@ function PlacementService.GiveEggTool(player, rarity)
 	tool.Parent = player.Backpack
 end
 
+-- ── Brainrot Tools ────────────────────────────────────────────────────────────
+
+-- Donne un brainrot spécifique comme Tool stacké dans le backpack
+function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rarity, revenuePerSecond)
+	local toolName = "Brainrot_" .. brainrotName
+
+	local existing = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+
+	if existing and existing:IsA("Tool") then
+		existing:SetAttribute("Count", (existing:GetAttribute("Count") or 1) + 1)
+		return
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name           = toolName
+	tool.RequiresHandle = true
+	tool:SetAttribute("BrainrotName",     brainrotName)
+	tool:SetAttribute("ModelName",        modelName or "")
+	tool:SetAttribute("Rarity",           rarity)
+	tool:SetAttribute("RevenuePerSecond", revenuePerSecond)
+	tool:SetAttribute("Count",            1)
+
+	local handle = Instance.new("Part")
+	handle.Name      = "Handle"
+	handle.Size      = Vector3.new(1, 1, 1)
+	handle.Color     = EGG_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
+	handle.CanCollide = false
+	handle.Massless   = true
+	handle.Parent     = tool
+
+	tool.Parent = player.Backpack
+end
+
+-- Retire un brainrot tool du backpack/personnage (décrémente Count ou détruit)
+function PlacementService.RemoveBrainrotTool(player, brainrotName)
+	local toolName = "Brainrot_" .. brainrotName
+
+	local tool = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+	if not tool then return end
+
+	local count = tool:GetAttribute("Count") or 1
+	if count > 1 then
+		tool:SetAttribute("Count", count - 1)
+	else
+		tool:Destroy()
+	end
+end
+
+-- Retourne le brainrot Tool équipé ou premier du backpack
+-- @return tool, brainrotName, modelName, rarity, revenuePerSecond
+function PlacementService.GetEquippedBrainrotInfo(player)
+	local function check(t)
+		if t:IsA("Tool") and t.Name:match("^Brainrot_") then
+			return t,
+				t:GetAttribute("BrainrotName"),
+				t:GetAttribute("ModelName") or "",
+				t:GetAttribute("Rarity"),
+				t:GetAttribute("RevenuePerSecond")
+		end
+	end
+
+	if player.Character then
+		local t = player.Character:FindFirstChildOfClass("Tool")
+		if t then
+			local tool, n, m, r, rev = check(t)
+			if tool then return tool, n, m, r, rev end
+		end
+	end
+
+	for _, t in ipairs(player.Backpack:GetChildren()) do
+		local tool, n, m, r, rev = check(t)
+		if tool then return tool, n, m, r, rev end
+	end
+
+	return nil
+end
+
 -- Retourne le Tool oeuf équipé ou le premier du backpack
 -- @return tool, rarity
 function PlacementService.GetEquippedEggInfo(player)
@@ -511,91 +590,6 @@ function PlacementService.RemoveEggTool(player, rarity)
 	end
 end
 
-local BRAINROT_COLORS = {
-	Common    = Color3.fromRGB(135, 135, 135),
-	Uncommon  = Color3.fromRGB(30, 180, 30),
-	Rare      = Color3.fromRGB(0, 100, 255),
-	Epic      = Color3.fromRGB(128, 0, 128),
-	Legendary = Color3.fromRGB(255, 215, 0),
-}
-
--- Donne un Tool brainrot au backpack du joueur
--- @param player: Player - Le joueur
--- @param generatorType: string - Type de générateur (ex: "Tralalero_Tralala_Generator")
--- @param rarity: string - Rareté du brainrot
-function PlacementService.GiveBrainrotTool(player, generatorType, rarity)
-	local tool = Instance.new("Tool")
-	tool.Name = "Brainrot_" .. generatorType .. "_" .. rarity
-	tool.RequiresHandle = true
-	tool:SetAttribute("GeneratorType", generatorType)
-	tool:SetAttribute("Rarity", rarity)
-
-	-- Essaie de trouver un modèle visuel dans ServerStorage/BrainrotTools
-	local brainrotTools = ServerStorage:FindFirstChild("BrainrotTools")
-	local template = brainrotTools
-		and brainrotTools:FindFirstChild(generatorType)
-		and brainrotTools:FindFirstChild(generatorType):FindFirstChild(rarity)
-
-	if template and template:IsA("BasePart") then
-		local handle = template:Clone()
-		handle.Name = "Handle"
-		handle.Parent = tool
-	else
-		-- Fallback : Part colorée
-		local handle = Instance.new("Part")
-		handle.Name = "Handle"
-		handle.Size = Vector3.new(1, 1, 1)
-		handle.Color = BRAINROT_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
-		handle.Parent = tool
-	end
-
-	tool.Parent = player.Backpack
-	print("Brainrot tool given:", tool.Name)
-end
-
--- Retourne le Tool brainrot équipé (en main ou premier du backpack)
--- @param player: Player - Le joueur
--- @return Tool|nil, string|nil, string|nil - tool, generatorType, rarity
-function PlacementService.GetEquippedBrainrotInfo(player)
-	local function checkTool(tool)
-		if tool:IsA("Tool") and tool.Name:match("^Brainrot_") then
-			local generatorType = tool:GetAttribute("GeneratorType")
-			local rarity = tool:GetAttribute("Rarity")
-			if generatorType and rarity then
-				return tool, generatorType, rarity
-			end
-		end
-	end
-
-	if player.Character then
-		local t = player.Character:FindFirstChildOfClass("Tool")
-		if t then
-			local tool, g, r = checkTool(t)
-			if tool then return tool, g, r end
-		end
-	end
-
-	for _, t in ipairs(player.Backpack:GetChildren()) do
-		local tool, g, r = checkTool(t)
-		if tool then return tool, g, r end
-	end
-
-	return nil, nil, nil
-end
-
--- Supprime le Tool brainrot du joueur
--- @param player: Player - Le joueur
--- @param generatorType: string - Type de générateur
--- @param rarity: string - Rareté
-function PlacementService.RemoveBrainrotTool(player, generatorType, rarity)
-	local toolName = "Brainrot_" .. generatorType .. "_" .. rarity
-	if player.Character then
-		local tool = player.Character:FindFirstChild(toolName)
-		if tool and tool:IsA("Tool") then tool:Destroy(); return end
-	end
-	local tool = player.Backpack:FindFirstChild(toolName)
-	if tool then tool:Destroy() end
-end
 
 -- Gets first available spawner from player inventory
 -- @param playerData: PlayerData - Player data instance

@@ -56,7 +56,10 @@ function PlayerData.new(userId)
 	self.placedGenerators = {
 		-- Array of {SlotName = "GeneratorSlot1", GeneratorType = "...", Rarity = "Common"}
 	}
-	
+
+	-- Brainrots dans l'inventaire (récupérés depuis les socles, pas encore replacés)
+	self.brainrotInventory = {}
+
 	return self
 end
 
@@ -74,8 +77,9 @@ function PlayerData.load(userId, savedData)
 	self.generatorInventory = savedData.generatorInventory or {}
 	self.quotaProgress = savedData.quotaProgress or {}
 	self.placedSpawners = savedData.placedSpawners or {}
-	self.placedGenerators = savedData.placedGenerators or {}
-	
+	self.placedGenerators  = savedData.placedGenerators  or {}
+	self.brainrotInventory = savedData.brainrotInventory or {}
+
 	return self
 end
 
@@ -89,7 +93,8 @@ function PlayerData:Serialize()
 		generatorInventory = self.generatorInventory,
 		quotaProgress = self.quotaProgress,
 		placedSpawners = self.placedSpawners,
-		placedGenerators = self.placedGenerators
+		placedGenerators  = self.placedGenerators,
+		brainrotInventory = self.brainrotInventory,
 	}
 end
 
@@ -168,6 +173,28 @@ function PlayerData:RemoveGenerator(rarity, count)
 	if self.generatorInventory[rarity] and self.generatorInventory[rarity] >= count then
 		self.generatorInventory[rarity] = self.generatorInventory[rarity] - count
 		return true
+	end
+	return false
+end
+
+-- Ajoute un brainrot récupéré dans l'inventaire
+function PlayerData:AddBrainrot(name, modelName, rarity, revenuePerSecond)
+	table.insert(self.brainrotInventory, {
+		Name             = name,
+		ModelName        = modelName or "",
+		Rarity           = rarity,
+		RevenuePerSecond = revenuePerSecond,
+	})
+end
+
+-- Retire un brainrot de l'inventaire (premier trouvé par nom)
+-- @return boolean - true si trouvé et retiré
+function PlayerData:RemoveBrainrot(name)
+	for i, b in ipairs(self.brainrotInventory) do
+		if b.Name == name then
+			table.remove(self.brainrotInventory, i)
+			return true
+		end
 	end
 	return false
 end

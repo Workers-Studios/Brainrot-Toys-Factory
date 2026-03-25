@@ -71,6 +71,25 @@ function PlayerDataService.RemoveGenerator(userId, generatorType)
 	return false
 end
 
+-- Ajoute un brainrot récupéré dans l'inventaire persistant
+function PlayerDataService.AddBrainrot(userId, name, modelName, rarity, revenuePerSecond)
+	local playerData = PlayerDataService.GetPlayerData(userId)
+	if playerData then
+		playerData:AddBrainrot(name, modelName, rarity, revenuePerSecond)
+		return true
+	end
+	return false
+end
+
+-- Retire un brainrot de l'inventaire persistant
+function PlayerDataService.RemoveBrainrot(userId, name)
+	local playerData = PlayerDataService.GetPlayerData(userId)
+	if playerData then
+		return playerData:RemoveBrainrot(name)
+	end
+	return false
+end
+
 -- Returns player's generator inventory
 -- @param userId: number - Player's user ID
 -- @return table|nil - Generator inventory or nil if PlayerData not found

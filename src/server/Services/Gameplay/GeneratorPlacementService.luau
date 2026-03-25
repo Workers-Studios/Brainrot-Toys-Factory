@@ -164,13 +164,16 @@ function GeneratorPlacementService.InitializePlotSlots(userId)
 
 		local slotKey = userId .. "_" .. slotModel.Name
 		_generatorSlots[slotKey] = {
-			Model        = slotModel,
-			Occupied     = false,
-			GeneratorPart = nil,
-			UserId       = userId,
+			Model               = slotModel,
+			Prompt              = prompt,
+			Occupied            = false,
+			GeneratorPart       = nil,
+			PlacementConnection = nil,
+			PickupConnection    = nil,
+			UserId              = userId,
 		}
 
-		prompt.Triggered:Connect(function(player)
+		_generatorSlots[slotKey].PlacementConnection = prompt.Triggered:Connect(function(player)
 			if player.UserId == userId then
 				GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 			end
@@ -191,19 +194,39 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	local playerData = _PlayerDataService.GetPlayerData(userId)
 	if not playerData then return end
 
-	-- Récupère la rareté de l'oeuf équipé/backpack
-	local _, rarity = PlacementService.GetEquippedEggInfo(player)
-	if not rarity then return end
-
-	-- Roll le brainrot dans la pool de cette rareté
-	local GeneratorConfig = require(script.Parent.Parent.Parent.Config.GeneratorConfig)
-	local rarityConfig = GeneratorConfig[rarity]
-	if not rarityConfig or not rarityConfig.Pool or #rarityConfig.Pool == 0 then
-		warn("Pas de Pool pour la rareté:", rarity)
-		return
+	-- Vérifier si un brainrot Tool est ACTIVEMENT ÉQUIPÉ en main (pas juste dans le backpack)
+	local brainrotTool, brainrotName, modelName, brainrotRarity, revenue
+	if player.Character then
+		local equipped = player.Character:FindFirstChildOfClass("Tool")
+		if equipped and equipped.Name:match("^Brainrot_") then
+			brainrotTool = equipped
+			brainrotName     = equipped:GetAttribute("BrainrotName")
+			modelName        = equipped:GetAttribute("ModelName") or ""
+			brainrotRarity   = equipped:GetAttribute("Rarity")
+			revenue          = equipped:GetAttribute("RevenuePerSecond")
+		end
 	end
 
-	local brainrot = rollBrainrot(rarityConfig.Pool)
+	local brainrot, rarity, isDirectBrainrot
+
+	if brainrotTool then
+		brainrot = { Name = brainrotName, ModelName = modelName ~= "" and modelName or nil, RevenuePerSecond = revenue }
+		rarity   = brainrotRarity
+		isDirectBrainrot = true
+	else
+		-- Sinon : oeuf → roll aléatoire dans la pool
+		local _, eggRarity = PlacementService.GetEquippedEggInfo(player)
+		if not eggRarity then return end
+		rarity = eggRarity
+
+		local GeneratorConfig = require(script.Parent.Parent.Parent.Config.GeneratorConfig)
+		local rarityConfig = GeneratorConfig[rarity]
+		if not rarityConfig or not rarityConfig.Pool or #rarityConfig.Pool == 0 then
+			warn("Pas de Pool pour la rareté:", rarity)
+			return
+		end
+		brainrot = rollBrainrot(rarityConfig.Pool)
+	end
 
 	-- Marquer le slot comme occupé
 	slotData.Occupied = true
@@ -211,17 +234,34 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	-- Visuel
 	createGeneratorVisual(slotData, rarity, brainrot.ModelName)
 
-	-- Désactiver le ProximityPrompt
-	local prompt = slotData.Model:FindFirstChild("ProximityPrompt", true)
-	if prompt then prompt.Enabled = false end
+	-- Retirer l'item utilisé
+	if isDirectBrainrot then
+		PlacementService.RemoveBrainrotTool(player, brainrot.Name)
+		_PlayerDataService.RemoveBrainrot(userId, brainrot.Name)
+	else
+		_PlayerDataService.RemoveGenerator(userId, rarity)
+		PlacementService.RemoveEggTool(player, rarity)
+	end
 
-	-- Retirer l'oeuf de l'inventaire et du backpack
-	_PlayerDataService.RemoveGenerator(userId, rarity)
-	PlacementService.RemoveEggTool(player, rarity)
+	-- Démarrer la génération d'argent (synchronisée)
+	_GeneratorService.StartGeneratorLoop(userId, slotKey, brainrot.RevenuePerSecond, 1)
 
-	-- Démarrer la génération d'argent
-	local generatorId = slotKey
-	_GeneratorService.StartGeneratorLoop(userId, generatorId, brainrot.RevenuePerSecond, 1)
+	-- Switch ProximityPrompt → mode "Récupérer"
+	if slotData.PlacementConnection then
+		slotData.PlacementConnection:Disconnect()
+		slotData.PlacementConnection = nil
+	end
+	local prompt = slotData.Prompt
+	prompt.ActionText          = "Récupérer"
+	prompt.ObjectText          = brainrot.Name
+	prompt.HoldDuration        = 0
+	prompt.Enabled             = true
+
+	local capturedSlotName = slotModel.Name
+	slotData.PickupConnection = prompt.Triggered:Connect(function(trigPlayer)
+		if trigPlayer.UserId ~= userId then return end
+		GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
+	end)
 
 	-- Sauvegarder le placement (avec le brainrot exact tiré)
 	table.insert(playerData.placedGenerators, {
@@ -253,18 +293,94 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 		-- Recréer le visuel avec le brainrot sauvegardé
 		createGeneratorVisual(slotData, placedData.Rarity, placedData.ModelName)
 
-		-- Désactiver le ProximityPrompt
-		local prompt = slotData.Model:FindFirstChild("ProximityPrompt", true)
-		if prompt then prompt.Enabled = false end
-
 		-- Relancer la génération d'argent (revenue sauvegardé, pas de re-roll)
-		_GeneratorService.StartGeneratorLoop(
-			userId,
-			slotKey,
-			placedData.RevenuePerSecond,
-			1
-		)
+		_GeneratorService.StartGeneratorLoop(userId, slotKey, placedData.RevenuePerSecond, 1)
+
+		-- Switch ProximityPrompt → mode "Récupérer"
+		if slotData.PlacementConnection then
+			slotData.PlacementConnection:Disconnect()
+			slotData.PlacementConnection = nil
+		end
+		local prompt = slotData.Prompt
+		prompt.ActionText = "Récupérer"
+		prompt.ObjectText = placedData.BrainrotName or ""
+		prompt.HoldDuration = 0
+		prompt.Enabled = true
+
+		local capturedSlotName = placedData.SlotName
+		local capturedRarity   = placedData.Rarity
+		slotData.PickupConnection = prompt.Triggered:Connect(function(trigPlayer)
+			if trigPlayer.UserId ~= userId then return end
+			GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
+		end)
 	end
+end
+
+-- ── Récupère un générateur posé et remet l'oeuf dans l'inventaire ────────────
+function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
+	local slotKey  = userId .. "_" .. slotName
+	local slotData = _generatorSlots[slotKey]
+	if not slotData or not slotData.Occupied then return end
+
+	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not playerData then return end
+
+	-- Trouver les données du générateur placé
+	local rarity, placedIndex = nil, nil
+	for i, placed in ipairs(playerData.placedGenerators) do
+		if placed.SlotName == slotName then
+			rarity      = placed.Rarity
+			placedIndex = i
+			break
+		end
+	end
+	if not rarity then return end
+
+	-- Stopper la génération d'argent
+	_GeneratorService.StopGenerator(slotKey)
+
+	-- Détruire le visuel
+	if slotData.GeneratorPart then
+		local model = slotData.GeneratorPart
+		if model and model.Parent then model:Destroy() end
+		slotData.GeneratorPart = nil
+	end
+	slotData.Occupied = false
+
+	-- Récupérer les données du brainrot avant de retirer
+	local placed = playerData.placedGenerators[placedIndex]
+	local brainrotName     = placed.BrainrotName
+	local brainrotModel    = placed.ModelName
+	local brainrotRarity   = placed.Rarity
+	local brainrotRevenue  = placed.RevenuePerSecond
+
+	-- Retirer de placedGenerators
+	table.remove(playerData.placedGenerators, placedIndex)
+
+	-- Déconnecter pickup, reconnecter placement
+	if slotData.PickupConnection then
+		slotData.PickupConnection:Disconnect()
+		slotData.PickupConnection = nil
+	end
+
+	local prompt = slotData.Prompt
+	prompt.ActionText = "Poser l'oeuf"
+	prompt.ObjectText = slotData.Model.Name
+	prompt.HoldDuration = 0
+	prompt.Enabled = true
+
+	slotData.PlacementConnection = prompt.Triggered:Connect(function(trigPlayer)
+		if trigPlayer.UserId ~= userId then return end
+		GeneratorPlacementService.OnSlotTriggered(trigPlayer, slotData.Model)
+	end)
+
+	-- Redonner le brainrot spécifique comme Tool (pas un oeuf générique)
+	if player then
+		PlacementService.GiveBrainrotTool(player, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
+	end
+	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
+
+	_PlayerDataService.SavePlayer(userId)
 end
 
 return GeneratorPlacementService

@@ -205,6 +205,10 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 					end
 				end
 			end
+			-- Brainrot tools (récupérés depuis les socles)
+			for _, b in ipairs(playerData.brainrotInventory or {}) do
+				PlacementService.GiveBrainrotTool(player, b.Name, b.ModelName or "", b.Rarity, b.RevenuePerSecond)
+			end
 		end
 	end)
 

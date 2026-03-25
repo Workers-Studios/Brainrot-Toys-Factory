@@ -32,8 +32,8 @@ local BADGE_H        = 18
 
 local _badges = {}
 
-local function isEgg(tool)
-	return tool:IsA("Tool") and tool.Name:match("^Oeuf_")
+local function isStackable(tool)
+	return tool:IsA("Tool") and (tool.Name:match("^Oeuf_") or tool.Name:match("^Brainrot_"))
 end
 
 local function getAllTools()
@@ -92,7 +92,7 @@ local function updateBadges()
 	end
 
 	for i, tool in ipairs(allTools) do
-		if not isEgg(tool) then continue end
+		if not isStackable(tool) then continue end
 
 		local count = tool:GetAttribute("Count") or 1
 		local rarity = tool:GetAttribute("Rarity") or "Common"
@@ -119,7 +119,7 @@ if player.Character then watchChar(player.Character) end
 
 -- Rafraîchissement Count en temps réel
 backpack.ChildAdded:Connect(function(c)
-	if isEgg(c) then
+	if isStackable(c) then
 		c:GetAttributeChangedSignal("Count"):Connect(updateBadges)
 	end
 end)
