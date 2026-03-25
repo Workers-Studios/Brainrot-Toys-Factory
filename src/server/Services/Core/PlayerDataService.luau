@@ -104,38 +104,36 @@ function PlayerDataService.GetGeneratorInventory(userId)
 end
 
 -- Saves player data to DataStore (debounced - max 1 save per SAVE_DEBOUNCE seconds)
--- Pour les saves peu critiques (incrément quota, etc.)
+-- Stocke le thread dans _pendingSaves pour pouvoir l'annuler proprement
 -- @param userId: number - Player's user ID
 function PlayerDataService.SavePlayer(userId)
-	if _pendingSaves[userId] then return end
-	_pendingSaves[userId] = true
+	if _pendingSaves[userId] then return end  -- déjà une save planifiée
 
-	task.delay(SAVE_DEBOUNCE, function()
+	_pendingSaves[userId] = task.delay(SAVE_DEBOUNCE, function()
 		_pendingSaves[userId] = nil
-		if _playerDataCache[userId] then
-			local serializedData = _playerDataCache[userId]:Serialize()
-			_DataService.SavePlayerData(userId, serializedData)
+		local playerData = _playerDataCache[userId]
+		if playerData then
+			_DataService.SavePlayerData(userId, playerData:Serialize())
 		end
 	end)
 end
 
--- Saves player data immediately, bypassing the debounce
--- Pour les events critiques : quota complété, générateur posé, déconnexion
+-- Saves player data immediately, en annulant toute save déboncée en attente
+-- Pour les events critiques : déconnexion
 -- @param userId: number - Player's user ID
 -- @return boolean - true if saved successfully
 function PlayerDataService.SavePlayerImmediate(userId)
-	-- Cancel debounced save if pending
+	-- Annuler la save déboncée en attente (maintenant possible car on stocke le thread)
 	if _pendingSaves[userId] then
 		task.cancel(_pendingSaves[userId])
 		_pendingSaves[userId] = nil
 	end
 
-	if not _playerDataCache[userId] then
-		warn("PlayerData not found for immediate save:", userId)
+	local playerData = _playerDataCache[userId]
+	if not playerData then
 		return false
 	end
 
-	local playerData = _playerDataCache[userId]
 	return _DataService.SavePlayerData(userId, playerData:Serialize())
 end
 

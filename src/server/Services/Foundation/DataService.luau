@@ -18,7 +18,7 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local _dataStore = nil
 local _maxRetries = 3
-local _retryDelays = {1, 2, 4}  -- Exponential backoff in seconds
+local _retryDelays = {6, 12, 24}  -- Respecte le cooldown DataStore (min 6s entre deux SetAsync)
 
 -- Initializes DataStore connection
 function DataService.Init()
