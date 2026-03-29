@@ -145,18 +145,11 @@ end
 -- @return self: PlayerData
 function PlayerData:AddGenerator(generatorType, rarity, count)
 	count = count or 1
-	
-	-- Initialize generator type if doesn't exist
 	if not self.generatorInventory[generatorType] then
-		self.generatorInventory[generatorType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
+		self.generatorInventory[generatorType] = {}
 	end
-	
-	self.generatorInventory[generatorType][rarity] = (self.generatorInventory[generatorType][rarity] or 0) + count
+	local inv = self.generatorInventory[generatorType]
+	inv[rarity] = (inv[rarity] or 0) + count
 	return self
 end
 
@@ -167,15 +160,11 @@ end
 -- @return boolean - true if successful
 function PlayerData:RemoveGenerator(generatorType, rarity, count)
 	count = count or 1
-	
-	if self.generatorInventory[generatorType] and 
-	   self.generatorInventory[generatorType][rarity] and
-	   self.generatorInventory[generatorType][rarity] >= count then
-		self.generatorInventory[generatorType][rarity] = 
-			self.generatorInventory[generatorType][rarity] - count
+	local inv = self.generatorInventory[generatorType]
+	if inv and (inv[rarity] or 0) >= count then
+		inv[rarity] = inv[rarity] - count
 		return true
 	end
-	
 	return false
 end
 
@@ -184,17 +173,11 @@ end
 -- @param rarity: string - Rarity of toy collected
 -- @return self: PlayerData
 function PlayerData:IncrementQuota(toyType, rarity)
-	-- Initialize toy type if doesn't exist
 	if not self.quotaProgress[toyType] then
-		self.quotaProgress[toyType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
+		self.quotaProgress[toyType] = {}
 	end
-	
-	self.quotaProgress[toyType][rarity] = (self.quotaProgress[toyType][rarity] or 0) + 1
+	local progress = self.quotaProgress[toyType]
+	progress[rarity] = (progress[rarity] or 0) + 1
 	return self
 end
 
