@@ -25,7 +25,7 @@ local SpawnerConfig = {
 	},
 
 	Uncommon = {
-		BasePrice       = 250,
+		BasePrice       = 5000,
 		SpawnRate       = 4,
 		RequiredPrestige = 0,
 		DropRates = {
@@ -38,7 +38,7 @@ local SpawnerConfig = {
 	},
 
 	Rare = {
-		BasePrice       = 500,
+		BasePrice       = 20000,
 		SpawnRate       = 3,
 		RequiredPrestige = 0,
 		DropRates = {
@@ -51,7 +51,7 @@ local SpawnerConfig = {
 	},
 
 	Epic = {
-		BasePrice       = 2000,
+		BasePrice       = 75000,
 		SpawnRate       = 2,
 		RequiredPrestige = 0,
 		DropRates = {
@@ -64,7 +64,7 @@ local SpawnerConfig = {
 	},
 
 	Legendary = {
-		BasePrice       = 10000,
+		BasePrice       = 150000,
 		SpawnRate       = 1,
 		RequiredPrestige = 0,
 		DropRates = {
