@@ -8,9 +8,12 @@
 
 local SpawnerService = {}
 
-local PhysicsService = game:GetService("PhysicsService")
-local ServerStorage  = game:GetService("ServerStorage")
-local PlotService    = require(script.Parent.Parent.Core.PlotService)
+local PhysicsService    = game:GetService("PhysicsService")
+local ServerStorage     = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlotService       = require(script.Parent.Parent.Core.PlotService)
+local LevelService      = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
 -- Les toys ne se collisionnent pas entre eux
 pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
@@ -153,6 +156,9 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 
 	toy.Name   = "Toy_" .. toyRarity .. "_" .. userId
 	toy.Parent = plot or workspace
+
+	-- Récompense EXP pour le toy généré
+	LevelService.AddExp(userId, LevelConfig.ExpRewards.BrainrotGenerated[toyRarity] or 0)
 end
 
 return SpawnerService

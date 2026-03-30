@@ -7,6 +7,10 @@
 
 local CollectionService = {}
 
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local LevelService       = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig        = require(ReplicatedStorage.Shared.LevelConfig)
+
 local _PlayerDataService = nil
 local _GeneratorService  = nil
 local _ToyConfig         = nil
@@ -113,6 +117,9 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 
 	-- Récompense : oeuf de la rareté du toy collecté
 	_PlayerDataService.AddGenerator(userId, rarity)
+
+	-- Récompense EXP pour quota complété
+	LevelService.AddExp(userId, LevelConfig.ExpRewards.QuotaCompleted)
 
 	local player = game.Players:GetPlayerByUserId(userId)
 	if player then

@@ -3,10 +3,10 @@
 	Chaque spawner a ses propres taux de drop pour les toys
 
 	Structure par rareté :
-	- BasePrice      : coût d'achat
-	- SpawnRate      : secondes entre chaque spawn
-	- RequiredRebirth: niveau de rebirth minimum
-	- DropRates      : probabilité de chaque rareté de toy (doit totaliser 1.0)
+	- BasePrice       : coût d'achat
+	- SpawnRate       : secondes entre chaque spawn
+	- RequiredPrestige: niveau de prestige minimum requis pour acheter
+	- DropRates       : probabilité de chaque rareté de toy (doit totaliser 1.0)
 ]]
 
 local SpawnerConfig = {
@@ -14,7 +14,7 @@ local SpawnerConfig = {
 	Common = {
 		BasePrice       = 100,
 		SpawnRate       = 5,
-		RequiredRebirth = 0,
+		RequiredPrestige = 0,
 		DropRates = {
 			Common    = 0.80,
 			Uncommon  = 0.12,
@@ -27,7 +27,7 @@ local SpawnerConfig = {
 	Uncommon = {
 		BasePrice       = 250,
 		SpawnRate       = 4,
-		RequiredRebirth = 0,
+		RequiredPrestige = 0,
 		DropRates = {
 			Common    = 0.70,
 			Uncommon  = 0.18,
@@ -40,7 +40,7 @@ local SpawnerConfig = {
 	Rare = {
 		BasePrice       = 500,
 		SpawnRate       = 3,
-		RequiredRebirth = 0,
+		RequiredPrestige = 0,
 		DropRates = {
 			Common    = 0.55,
 			Uncommon  = 0.22,
@@ -53,7 +53,7 @@ local SpawnerConfig = {
 	Epic = {
 		BasePrice       = 2000,
 		SpawnRate       = 2,
-		RequiredRebirth = 0,
+		RequiredPrestige = 0,
 		DropRates = {
 			Common    = 0.40,
 			Uncommon  = 0.22,
@@ -66,7 +66,7 @@ local SpawnerConfig = {
 	Legendary = {
 		BasePrice       = 10000,
 		SpawnRate       = 1,
-		RequiredRebirth = 0,
+		RequiredPrestige = 0,
 		DropRates = {
 			Common    = 0.25,
 			Uncommon  = 0.27,

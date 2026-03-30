@@ -10,9 +10,12 @@
 
 local GeneratorPlacementService = {}
 
-local ServerStorage    = game:GetService("ServerStorage")
-local PlotService      = require(script.Parent.Parent.Core.PlotService)
-local PlacementService = require(script.Parent.PlacementService)
+local ServerStorage     = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlotService       = require(script.Parent.Parent.Core.PlotService)
+local PlacementService  = require(script.Parent.PlacementService)
+local LevelService      = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
 local _PlayerDataService = nil
 local _GeneratorService  = nil
@@ -245,6 +248,9 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 
 	-- Démarrer la génération d'argent (synchronisée)
 	_GeneratorService.StartGeneratorLoop(userId, slotKey, brainrot.RevenuePerSecond, 1)
+
+	-- Récompense EXP pour le slot rempli
+	LevelService.AddExp(userId, LevelConfig.ExpRewards.GearSlotFilled)
 
 	-- Switch ProximityPrompt → mode "Récupérer"
 	if slotData.PlacementConnection then

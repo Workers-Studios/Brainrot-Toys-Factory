@@ -15,8 +15,11 @@
 
 local PlacementService = {}
 
-local PlotService = require(script.Parent.Parent.Core.PlotService)
-local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlotService       = require(script.Parent.Parent.Core.PlotService)
+local ServerStorage     = game:GetService("ServerStorage")
+local LevelService      = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
 local VALID_RARITIES = {Common = true, Uncommon = true, Rare = true, Epic = true, Legendary = true}
 
@@ -257,6 +260,9 @@ function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName, player)
 	end)
 
 	playerData:RemoveFromInventory(rarity)
+
+	-- Récompense EXP pour le placement
+	LevelService.AddExp(userId, LevelConfig.ExpRewards.SpawnerPlaced)
 
 	-- Supprimer le tool de la main du joueur
 	if player then
@@ -674,6 +680,74 @@ function PlacementService.RestorePlacedSpawners(userId)
 		end)
 
 	end
+end
+
+-- Force le retrait de TOUS les spawners d'un joueur (utilisé lors du Prestige)
+-- Ne remet PAS les spawners dans l'inventaire — reset total.
+-- @param userId: number - Player's user ID
+function PlacementService.ForceRemoveAllSpawners(userId)
+	local prefix = tostring(userId) .. "_"
+
+	for slotKey, slotData in pairs(_slots) do
+		-- Ne traiter que les slots appartenant à ce joueur
+		if slotData.UserId == userId and slotData.Occupied then
+
+			-- Stopper la génération de toys
+			local slotName = slotKey:sub(#prefix + 1)
+			if _SpawnerService and _SpawnerService.StopSpawner then
+				_SpawnerService.StopSpawner(userId, slotName)
+			end
+
+			-- Détruire le visuel du spawner
+			local spawnerPart = slotData.SpawnerPart
+			if spawnerPart then
+				local spawnerModel = spawnerPart.Parent
+				if spawnerModel and spawnerModel:IsA("Model") then
+					spawnerModel:Destroy()
+				else
+					spawnerPart:Destroy()
+				end
+			end
+			slotData.SpawnerPart = nil
+			slotData.Occupied    = false
+
+			-- Restaurer la visibilité du slot
+			local slotModel = slotData.Model
+			if slotModel and slotModel.Parent then
+				if slotModel:IsA("Model") then
+					for _, part in ipairs(slotModel:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.Transparency = 0
+						end
+					end
+				elseif slotModel:IsA("BasePart") then
+					slotModel.Transparency = 0
+				end
+			end
+
+			-- Déconnecter pickup et reconnecter placement
+			if slotData.PickupConnection then
+				slotData.PickupConnection:Disconnect()
+				slotData.PickupConnection = nil
+			end
+
+			local pp = slotData.ProximityPrompt
+			if pp then
+				pp.ActionText   = "Placer"
+				pp.ObjectText   = ""
+				pp.HoldDuration = 0
+				pp.Enabled      = true
+
+				slotData.PlacementConnection = pp.Triggered:Connect(function(player)
+					if player.UserId == userId then
+						PlacementService.OnSlotTriggered(player, slotData.Model)
+					end
+				end)
+			end
+		end
+	end
+
+	print(string.format("[PlacementService] ForceRemoveAllSpawners → Joueur %d reset", userId))
 end
 
 return PlacementService
