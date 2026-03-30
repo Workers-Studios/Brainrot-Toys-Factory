@@ -91,8 +91,10 @@ end
 
 -- Adds money to player balance
 -- @param amount: number - Money to add
+-- @return self: PlayerData
 function PlayerData:AddMoney(amount)
 	self.money = self.money + amount
+	return self
 end
 
 -- Removes money from player balance (with validation)
@@ -116,9 +118,11 @@ end
 -- Adds spawner to inventory
 -- @param rarity: string - Spawner rarity
 -- @param count: number - Amount to add (default 1)
+-- @return self: PlayerData
 function PlayerData:AddToInventory(rarity, count)
 	count = count or 1
 	self.inventory[rarity] = (self.inventory[rarity] or 0) + count
+	return self
 end
 
 -- Removes spawner from inventory
@@ -138,21 +142,15 @@ end
 -- @param generatorType: string - Type of generator
 -- @param rarity: string - Generator rarity
 -- @param count: number - Amount to add (default 1)
+-- @return self: PlayerData
 function PlayerData:AddGenerator(generatorType, rarity, count)
 	count = count or 1
-	
-	-- Initialize generator type if doesn't exist
 	if not self.generatorInventory[generatorType] then
-		self.generatorInventory[generatorType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
+		self.generatorInventory[generatorType] = {}
 	end
-	
-	self.generatorInventory[generatorType][rarity] = 
-		(self.generatorInventory[generatorType][rarity] or 0) + count
+	local inv = self.generatorInventory[generatorType]
+	inv[rarity] = (inv[rarity] or 0) + count
+	return self
 end
 
 -- Removes generator from inventory
@@ -162,34 +160,25 @@ end
 -- @return boolean - true if successful
 function PlayerData:RemoveGenerator(generatorType, rarity, count)
 	count = count or 1
-	
-	if self.generatorInventory[generatorType] and 
-	   self.generatorInventory[generatorType][rarity] and
-	   self.generatorInventory[generatorType][rarity] >= count then
-		self.generatorInventory[generatorType][rarity] = 
-			self.generatorInventory[generatorType][rarity] - count
+	local inv = self.generatorInventory[generatorType]
+	if inv and (inv[rarity] or 0) >= count then
+		inv[rarity] = inv[rarity] - count
 		return true
 	end
-	
 	return false
 end
 
 -- Increments quota progress for a toy type and rarity
 -- @param toyType: string - Type of toy collected
 -- @param rarity: string - Rarity of toy collected
+-- @return self: PlayerData
 function PlayerData:IncrementQuota(toyType, rarity)
-	-- Initialize toy type if doesn't exist
 	if not self.quotaProgress[toyType] then
-		self.quotaProgress[toyType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
+		self.quotaProgress[toyType] = {}
 	end
-	
-	self.quotaProgress[toyType][rarity] = 
-		(self.quotaProgress[toyType][rarity] or 0) + 1
+	local progress = self.quotaProgress[toyType]
+	progress[rarity] = (progress[rarity] or 0) + 1
+	return self
 end
 
 -- Gets current quota progress
@@ -206,10 +195,12 @@ end
 -- Resets quota for a specific toy type and rarity
 -- @param toyType: string - Type of toy
 -- @param rarity: string - Rarity tier
+-- @return self: PlayerData
 function PlayerData:ResetQuota(toyType, rarity)
 	if self.quotaProgress[toyType] then
 		self.quotaProgress[toyType][rarity] = 0
 	end
+	return self
 end
 
 return PlayerData
