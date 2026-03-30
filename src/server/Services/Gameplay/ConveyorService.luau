@@ -1,17 +1,26 @@
+--[[
+	Gestion des convoyeurs et de la zone de collecte
+	Déplace les toys vers la zone de collecte via Heartbeat
+
+	Découplage via Signal :
+	  Quand un toy atteint la CollectionZone, on émet Signal "ToyReachedCollection"
+	  au lieu d'appeler CollectionService directement.
+	  CollectionService s'abonne dans son Init().
+]]
+
 local ConveyorService = {}
 
-local RunService = game:GetService("RunService")
+local RunService  = game:GetService("RunService")
 local PlotService = require(script.Parent.Parent.Core.PlotService)
+local Signal      = require(game.ServerScriptService.Framework.Signal)
 
-local _segments = {}
+local _segments   = {}
 local _heartbeats = {}
-local _CollectionService = nil
 
 local CONVEYOR_SPEED = 10
-local EXPAND_BONUS = 4.5
+local EXPAND_BONUS   = 4.5
 
 function ConveyorService.Init()
-	_CollectionService = require(script.Parent.CollectionService)
 	print("ConveyorService initialized")
 end
 
@@ -37,27 +46,25 @@ function ConveyorService.InitializePlotConveyors(userId)
 		end
 
 		local direction = (segment.CFrame * CFrame.Angles(0, math.rad(270), 0)).LookVector
-		local segNum = tonumber(segment.Name:match("%d+")) or 0
-		local expand = (segNum == 8) and 0 or EXPAND_BONUS
+		local segNum    = tonumber(segment.Name:match("%d+")) or 0
+		local expand    = (segNum == 8) and 0 or EXPAND_BONUS
 
 		table.insert(_segments[userId], {
-			Part = segment,
+			Part      = segment,
 			Direction = direction,
-			Expand = expand,
-			Num = segNum,
+			Expand    = expand,
+			Num       = segNum,
 		})
 		count += 1
-
 		segment.CanCollide = true
 	end
 
-	-- Trier en ordre DESCENDANT : les segments bas écrasent les hauts
-	-- Un toy sur le 7 ET dans la zone du 8 → le 7 gagne (priorité)
+	-- Trier en ordre descendant : les segments bas ont priorité
 	table.sort(_segments[userId], function(a, b)
 		return a.Num > b.Num
 	end)
 
-	-- CollectionZone
+	-- CollectionZone — émet Signal au lieu d'appeler CollectionService directement
 	local collection = plot:FindFirstChild("Collection")
 	if collection then
 		local collectionZone = collection:FindFirstChild("CollectionZone")
@@ -67,7 +74,8 @@ function ConveyorService.InitializePlotConveyors(userId)
 					and hit:GetAttribute("OwnerId") == userId
 					and hit:GetAttribute("ToyRarity") ~= nil then
 					hit.AssemblyLinearVelocity = Vector3.zero
-					_CollectionService.OnToyCollected(hit)
+					-- Découplé : CollectionService écoute cet événement dans son Init()
+					Signal.Fire("ToyReachedCollection", hit)
 				end
 			end)
 		end
@@ -83,8 +91,8 @@ function ConveyorService.InitializePlotConveyors(userId)
 		for _, waypoint in ipairs(segs) do
 			if not waypoint.Part.Parent then continue end
 
-			local seg = waypoint.Part
-			local expand = waypoint.Expand
+			local seg        = waypoint.Part
+			local expand     = waypoint.Expand
 			local expandedSize = Vector3.new(
 				seg.Size.X + expand,
 				seg.Size.Y + 1,

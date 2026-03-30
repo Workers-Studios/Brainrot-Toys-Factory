@@ -12,20 +12,20 @@
 
 local RemoteFunctionHandler = {}
 
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local AntiExploitService = require(game.ServerScriptService.Services.Core.AntiExploitService)
+local Network            = require(ReplicatedStorage.Shared.Network)
 
 local _ShopService = nil
 local _PlacementService = nil
 local _PlayerDataService = nil
 
--- Get RemoteFunctions from ReplicatedStorage
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RemoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
-local Functions = RemoteInterface:WaitForChild("Functions")
+local RemoteInterface   = ReplicatedStorage:WaitForChild("RemoteInterface")
+local Functions         = RemoteInterface:WaitForChild("Functions")
 
-local PurchaseSpawner = Functions:WaitForChild("PurchaseSpawner")
-local PlaceSpawner = Functions:WaitForChild("PlaceSpawner")
-local RequestPlayerData = Functions:WaitForChild("RequestPlayerData")
+local PurchaseSpawner   = Functions:WaitForChild(Network.Functions.PurchaseSpawner)
+local PlaceSpawner      = Functions:WaitForChild(Network.Functions.PlaceSpawner)
+local RequestPlayerData = Functions:WaitForChild(Network.Functions.RequestPlayerData)
 
 -- Initializes handler and connects RemoteFunctions to services
 -- @param ShopService: service - Shop and transaction service

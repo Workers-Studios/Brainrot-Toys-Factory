@@ -1,21 +1,18 @@
 --[[
-	Affiche la somme des RevenuePerSecond de tous les brainrots posés sur les socles
-	dans le label "MoneyPerSecond" du HUD.
+	Affiche la somme des RevenuePerSecond de tous les brainrots posés
+	dans le label "MoneyPerSecond" du HUD
 
 	Mis à jour à chaque fois qu'un brainrot est posé ou récupéré.
 ]]
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Network           = require(ReplicatedStorage.Shared.Network)
 
-local player = Players.LocalPlayer
+local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Cherche le label MoneyPerSecond dans le HUD (cherche récursivement)
 local hud = playerGui:WaitForChild("HUD")
-local background = hud:WaitForChild("Background")
-
--- Chercher récursivement dans tout le HUD (pas seulement Background)
 local moneyPerSecondLabel = hud:FindFirstChild("MoneyPerSecond", true)
 
 if not moneyPerSecondLabel then
@@ -23,17 +20,15 @@ if not moneyPerSecondLabel then
 	return
 end
 
-print("[HUDRevenue] Label trouvé:", moneyPerSecondLabel:GetFullName())
+print("[HUDRevenue] Label trouvé :", moneyPerSecondLabel:GetFullName())
 
--- Écouter les mises à jour de revenu du serveur
 local onRevenueChanged = ReplicatedStorage
 	:WaitForChild("RemoteInterface")
 	:WaitForChild("Events")
-	:WaitForChild("OnRevenuePerSecondChanged")
+	:WaitForChild(Network.Events.OnRevenuePerSecondChanged)
 
 print("[HUDRevenue] Event connecté")
 
 onRevenueChanged.OnClientEvent:Connect(function(totalRevenue)
-	print("[HUDRevenue] Reçu:", totalRevenue)
 	moneyPerSecondLabel.Text = tostring(totalRevenue) .. "/s"
 end)

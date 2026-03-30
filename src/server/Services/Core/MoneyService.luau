@@ -12,10 +12,14 @@
 
 local MoneyService = {}
 
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local AntiExploitService = require(game.ServerScriptService.Services.Core.AntiExploitService)
+local Network            = require(ReplicatedStorage.Shared.Network)
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local OnMoneyChanged = ReplicatedStorage:WaitForChild("RemoteInterface"):WaitForChild("Events"):WaitForChild("OnMoneyChanged")
+local OnMoneyChanged = ReplicatedStorage
+	:WaitForChild("RemoteInterface")
+	:WaitForChild("Events")
+	:WaitForChild(Network.Events.OnMoneyChanged)
 
 local _PlayerDataService = nil
 local _OnMoneyChanged = nil

@@ -10,23 +10,19 @@
 
 local GeneratorPlacementService = {}
 
-local ServerStorage    = game:GetService("ServerStorage")
+local ServerStorage     = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PlotService      = require(script.Parent.Parent.Core.PlotService)
-local PlacementService = require(script.Parent.PlacementService)
+local PlotService       = require(script.Parent.Parent.Core.PlotService)
+local PlacementService  = require(script.Parent.PlacementService)
+local Network           = require(ReplicatedStorage.Shared.Network)
 
 local _PlayerDataService = nil
 local _GeneratorService  = nil
 local _generatorSlots    = {}  -- [userId_slotName] = slotData
 
--- RemoteEvent pour notifier le client du total de revenus/s de ses brainrots
+-- RemoteEvent créée dans ServerInit via Network — on attend simplement qu'elle existe
 local _eventsFolder = ReplicatedStorage:WaitForChild("RemoteInterface"):WaitForChild("Events")
-local _OnRevenuePerSecondChanged = _eventsFolder:FindFirstChild("OnRevenuePerSecondChanged")
-if not _OnRevenuePerSecondChanged then
-	_OnRevenuePerSecondChanged = Instance.new("RemoteEvent")
-	_OnRevenuePerSecondChanged.Name = "OnRevenuePerSecondChanged"
-	_OnRevenuePerSecondChanged.Parent = _eventsFolder
-end
+local _OnRevenuePerSecondChanged = _eventsFolder:WaitForChild(Network.Events.OnRevenuePerSecondChanged)
 
 -- Calcule le total des RevenuePerSecond de tous les brainrots posés d'un joueur
 local function getTotalRevenue(userId)

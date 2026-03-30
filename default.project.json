@@ -30,6 +30,13 @@
       "$ignoreUnknownInstances": true
     },
 
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+
     "Workspace": {
       "$ignoreUnknownInstances": true
     }

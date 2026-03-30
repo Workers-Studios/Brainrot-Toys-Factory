@@ -1,52 +1,47 @@
 --[[
-	Admin commands system with UI support
-	Only authorized users can execute admin commands via secure RemoteEvents
-	
-	Commands:
-	- GiveMoney: Add money to player
-	- SetMoney: Set player money to exact amount
-	- GiveSpawner: Give spawner to player inventory
+	Système de commandes admin avec support UI
+	Seuls les utilisateurs autorisés peuvent exécuter des commandes via RemoteEvents sécurisés
+
+	Commandes :
+	- GiveMoney   : ajouter de l'argent à un joueur
+	- SetMoney    : définir l'argent d'un joueur à une valeur exacte
+	- GiveSpawner : donner un spawner à un joueur
 ]]
 
 local AdminService = {}
 
-local _PlayerDataService = nil
-local _MoneyService = nil
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Network = require(ReplicatedStorage.Shared.Network)
+local Enums   = require(ReplicatedStorage.Shared.Enums)
 
--- Users Admin ID
+local _PlayerDataService = nil
+local _MoneyService      = nil
+
+-- IDs admin autorisés
 local ADMIN_USER_IDS = {
-	10244275965, -- DorianABDS 
+	10244275965, -- DorianABDS
 }
 
--- Checks if player is admin
--- @param userId: number - Player's user ID
--- @return boolean - true if admin
 local function isAdmin(userId)
 	for _, adminId in ipairs(ADMIN_USER_IDS) do
-		if userId == adminId then
-			return true
-		end
+		if userId == adminId then return true end
 	end
 	return false
 end
 
--- Initializes admin service and creates RemoteEvents
--- @param PlayerDataService: service
--- @param MoneyService: service
+-- Initialise le service et connecte les remotes
 function AdminService.Init(PlayerDataService, MoneyService)
 	_PlayerDataService = PlayerDataService
-	_MoneyService = MoneyService
+	_MoneyService      = MoneyService
 
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local adminFolder = ReplicatedStorage.RemoteInterface:WaitForChild("Admin")
 
-	-- Connecter les handlers sur les remotes pré-créées par ServerInit
-	local isAdminRemote = adminFolder:WaitForChild("IsAdmin")
+	local isAdminRemote = adminFolder:WaitForChild(Network.Admin.IsAdmin)
 	isAdminRemote.OnServerInvoke = function(player)
 		return isAdmin(player.UserId)
 	end
 
-	local executeCommandRemote = adminFolder:WaitForChild("ExecuteCommand")
+	local executeCommandRemote = adminFolder:WaitForChild(Network.Admin.ExecuteCommand)
 	executeCommandRemote.OnServerEvent:Connect(function(player, commandType, targetName, value)
 		AdminService.ExecuteCommand(player, commandType, targetName, value)
 	end)
@@ -54,66 +49,62 @@ function AdminService.Init(PlayerDataService, MoneyService)
 	print("AdminService initialized")
 end
 
--- Executes admin command from UI
--- @param admin: Player - Admin who sent command
--- @param commandType: string - Command type (GiveMoney, SetMoney, GiveSpawner)
--- @param targetName: string - Target player name
--- @param value: any - Command value (amount or rarity)
+-- Exécute une commande admin
+-- @param admin       : Player - Admin exécutant la commande
+-- @param commandType : string - Type (GiveMoney, SetMoney, GiveSpawner)
+-- @param targetName  : string - Nom du joueur cible
+-- @param value       : any    - Valeur de la commande (montant ou rareté)
 function AdminService.ExecuteCommand(admin, commandType, targetName, value)
-	-- Verify admin
 	if not isAdmin(admin.UserId) then
-		warn("Unauthorized command attempt from", admin.Name)
+		warn("Tentative de commande non autorisée depuis", admin.Name)
 		return
 	end
 
-	-- Find target player
 	local target = game.Players:FindFirstChild(targetName)
 	if not target then
-		warn("Admin: Player not found:", targetName)
+		warn("Admin: joueur introuvable :", targetName)
 		return
 	end
 
-	-- Execute command
 	if commandType == "GiveMoney" then
 		local amount = tonumber(value)
 		if not amount or amount <= 0 then
-			warn("Admin: Invalid amount")
+			warn("Admin: montant invalide")
 			return
 		end
-
 		_MoneyService.AddMoney(target.UserId, amount)
-		print(string.format("✅ Admin %s gave %d$ to %s", admin.Name, amount, targetName))
+		print(string.format("✅ Admin %s a donné %d$ à %s", admin.Name, amount, targetName))
 
 	elseif commandType == "SetMoney" then
 		local amount = tonumber(value)
 		if not amount or amount < 0 then
-			warn("Admin: Invalid amount")
+			warn("Admin: montant invalide")
 			return
 		end
-
 		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
 		if playerData then
 			playerData.money = amount
-			local OnMoneyChanged = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnMoneyChanged
-			OnMoneyChanged:FireClient(target, amount)
+			local onMoneyChanged = ReplicatedStorage.RemoteInterface.Events
+				:FindFirstChild(Network.Events.OnMoneyChanged)
+			if onMoneyChanged then
+				onMoneyChanged:FireClient(target, amount)
+			end
 			_PlayerDataService.SavePlayer(target.UserId)
-			print(string.format("✅ Admin %s set %s money to %d$", admin.Name, targetName, amount))
+			print(string.format("✅ Admin %s a fixé l'argent de %s à %d$", admin.Name, targetName, amount))
 		end
 
 	elseif commandType == "GiveSpawner" then
 		local rarity = value
-		local validRarities = {"Common", "Rare", "Epic", "Legendary"}
-
-		if not table.find(validRarities, rarity) then
-			warn("Admin: Invalid rarity")
+		-- Enums.RaritySet valide toutes les raretés connues (y compris Uncommon)
+		if not Enums.RaritySet[rarity] then
+			warn("Admin: rareté invalide :", rarity)
 			return
 		end
-
 		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
 		if playerData then
 			playerData:AddToInventory(rarity)
 			_PlayerDataService.SavePlayer(target.UserId)
-			print(string.format("✅ Admin %s gave %s spawner to %s", admin.Name, rarity, targetName))
+			print(string.format("✅ Admin %s a donné un spawner %s à %s", admin.Name, rarity, targetName))
 		end
 	end
 end

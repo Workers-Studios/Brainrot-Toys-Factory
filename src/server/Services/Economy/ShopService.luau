@@ -1,101 +1,97 @@
 --[[
-	Manages shop transactions and spawner purchases
-	Validates purchase requirements and handles money transactions
-	
-	Main responsibilities:
-	- Validate spawner purchase requests (rebirth level, funds)
-	- Process transactions via MoneyService
-	- Add purchased items to player inventory
-	- Notify client of transaction results
-	
-	All transactions are server-authoritative and validated
+	Gestion des transactions du shop et des achats de spawners
+	Valide les achats et traite les transactions de manière serveur-autoritaire
+
+	Découplage via Signal :
+	  Après un achat réussi, émet "SpawnerPurchased" au lieu d'appeler
+	  PlacementService.GiveSpawnerTool directement.
+	  PlacementService s'abonne dans son Init().
 ]]
 
 local ShopService = {}
 
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local AntiExploitService = require(game.ServerScriptService.Services.Core.AntiExploitService)
-local PlacementService = require(game.ServerScriptService.Services.Gameplay.PlacementService)
+local Signal             = require(game.ServerScriptService.Framework.Signal)
+local Network            = require(ReplicatedStorage.Shared.Network)
 
-local _SpawnerConfig = nil
-local _MoneyService = nil
+local _SpawnerConfig     = nil
+local _MoneyService      = nil
 local _PlayerDataService = nil
-local _OnNotification = game:GetService("ReplicatedStorage"):WaitForChild("RemoteInterface"):WaitForChild("Events"):WaitForChild("OnNotification")
+local _OnNotification    = nil
 
--- Initializes service with required dependencies
--- @param SpawnerConfig: table - Spawner configuration data
--- @param MoneyService: service - Money transaction service
--- @param PlayerDataService: service - Player data management service
+-- Initialise le service
 function ShopService.Init(SpawnerConfig, MoneyService, PlayerDataService)
-	_SpawnerConfig = SpawnerConfig
-	_MoneyService = MoneyService
+	_SpawnerConfig     = SpawnerConfig
+	_MoneyService      = MoneyService
 	_PlayerDataService = PlayerDataService
+
+	_OnNotification = ReplicatedStorage
+		:WaitForChild("RemoteInterface")
+		:WaitForChild("Events")
+		:WaitForChild(Network.Events.OnNotification)
 end
 
--- Processes spawner purchase with validation
--- @param userId: number - Player's user ID
--- @param rarity: string - Spawner rarity to purchase
--- @return boolean, string - Success status and message
+-- Traite un achat de spawner avec validation complète
+-- @param userId : number - ID du joueur
+-- @param rarity : string - Rareté du spawner à acheter
+-- @return boolean, string - succès + message
 function ShopService.PurchaseSpawner(userId, rarity)
 	if not AntiExploitService.CheckRateLimit(userId, "PurchaseSpawner") then
-		return false, "Too many requests, please wait"
+		return false, "Trop de requêtes, attends un peu"
 	end
 
 	if not AntiExploitService.ValidateRarity(rarity) then
-		AntiExploitService.LogSuspiciousActivity(userId, "PurchaseSpawner", "Invalid rarity: " .. tostring(rarity))
-		return false, "Invalid rarity"
-	end
-	
-	-- Validate spawner type exists
-	if _SpawnerConfig[rarity] == nil then
-		return false, "Invalid spawner type"
+		AntiExploitService.LogSuspiciousActivity(userId, "PurchaseSpawner", "Rareté invalide : " .. tostring(rarity))
+		return false, "Rareté invalide"
 	end
 
-	local price = _SpawnerConfig[rarity].BasePrice
-	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not _SpawnerConfig[rarity] then
+		return false, "Type de spawner invalide"
+	end
+
+	local price       = _SpawnerConfig[rarity].BasePrice
+	local playerData  = _PlayerDataService.GetPlayerData(userId)
 	local rebirthLevel = playerData.rebirthLevel
 
-	-- Check rebirth level requirement
 	if rebirthLevel < _SpawnerConfig[rarity].RequiredRebirth then
-		if _OnNotification then
-			_OnNotification:FireClient(game.Players:GetPlayerByUserId(userId), "You need to rebirth to unlock this spawner!", "ERROR")
+		local player = game.Players:GetPlayerByUserId(userId)
+		if player and _OnNotification then
+			_OnNotification:FireClient(player, "Rebirth requis pour débloquer ce spawner !", "ERROR")
 		end
-		return false, "You need to rebirth to unlock this spawner!"
+		return false, "Rebirth requis !"
 	end
 
-	-- Check sufficient funds
 	if not _MoneyService.HasEnoughMoney(userId, price) then
-		if _OnNotification then
-			_OnNotification:FireClient(game.Players:GetPlayerByUserId(userId), "You don't have enough money!", "ERROR")
+		local player = game.Players:GetPlayerByUserId(userId)
+		if player and _OnNotification then
+			_OnNotification:FireClient(player, "Pas assez d'argent !", "ERROR")
 		end
-		return false, "You don't have enough money!"
+		return false, "Pas assez d'argent !"
 	end
 
-	-- Process transaction
+	-- Transaction
 	_MoneyService.DeductMoney(userId, price)
 	playerData:AddToInventory(rarity)
 
-	-- Donner le tool au joueur
+	-- Découplé : PlacementService écoute "SpawnerPurchased" dans son Init()
 	local player = game.Players:GetPlayerByUserId(userId)
 	if player then
-		PlacementService.GiveSpawnerTool(player, rarity)
+		Signal.Fire("SpawnerPurchased", player, rarity)
+		if _OnNotification then
+			_OnNotification:FireClient(player, rarity .. " spawner acheté !", "SUCCESS")
+		end
 	end
 
-	if _OnNotification then
-		_OnNotification:FireClient(player, rarity .. " spawner acheté !", "SUCCESS")
-	end
-
-	return true, "Purchase successful"
+	return true, "Achat réussi"
 end
 
--- Returns price for a spawner rarity
--- @param rarity: string - Spawner rarity
--- @return number|nil - Price or nil if rarity doesn't exist
+-- Retourne le prix d'une rareté de spawner
 function ShopService.GetSpawnerPrice(rarity)
 	if _SpawnerConfig[rarity] then
 		return _SpawnerConfig[rarity].BasePrice
-	else
-		return nil
 	end
+	return nil
 end
 
 return ShopService

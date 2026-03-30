@@ -15,18 +15,20 @@
 
 local PlacementService = {}
 
-local PlotService = require(script.Parent.Parent.Core.PlotService)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlotService   = require(script.Parent.Parent.Core.PlotService)
 local ServerStorage = game:GetService("ServerStorage")
+local Signal        = require(game.ServerScriptService.Framework.Signal)
+local Enums         = require(ReplicatedStorage.Shared.Enums)
 
-local VALID_RARITIES = {Common = true, Uncommon = true, Rare = true, Epic = true, Legendary = true}
+local VALID_RARITIES = Enums.RaritySet
 
 local _PlayerDataService = nil
 local _SpawnerService = nil
 local _SpawnerConfig = nil
-local _OnNotification = game:GetService("ReplicatedStorage"):WaitForChild("RemoteInterface"):WaitForChild("Events"):WaitForChild("OnNotification")
 local _slots = {}  -- [userId_slotName] = slotData
 
--- Initializes service (no longer searches for global slots)
+-- Initializes service
 -- @param PlayerDataService: service - Player data management service
 -- @param SpawnerService: service - Spawner management service
 -- @param SpawnerConfig: table - Spawner configuration data
@@ -34,6 +36,16 @@ function PlacementService.Init(PlayerDataService, SpawnerService, SpawnerConfig)
 	_PlayerDataService = PlayerDataService
 	_SpawnerService = SpawnerService
 	_SpawnerConfig = SpawnerConfig
+
+	-- Réagit aux quotas complétés — CollectionService émet "QuotaComplete"
+	Signal.Connect("QuotaComplete", function(player, rarity)
+		PlacementService.GiveEggTool(player, rarity)
+	end)
+
+	-- Réagit aux achats de spawner — ShopService émet "SpawnerPurchased"
+	Signal.Connect("SpawnerPurchased", function(player, rarity)
+		PlacementService.GiveSpawnerTool(player, rarity)
+	end)
 
 	print("PlacementService initialized")
 end
