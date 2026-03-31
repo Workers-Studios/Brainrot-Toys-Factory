@@ -96,31 +96,8 @@ function PrestigeService.CanPrestige(userId)
 		return false, string.format("Niveau insuffisant : %d/%d", playerData.level, LevelConfig.MaxLevel)
 	end
 
-	-- Choisir les exigences : Maître Prestige ou prestige standard
+	-- Seule condition : niveau 50 atteint (vérifié ci-dessus)
 	local isMasterRequest = (playerData.prestigeLevel >= PrestigeConfig.MaxPrestige)
-	local req = isMasterRequest
-		and PrestigeConfig.MasterPrestige
-		or  PrestigeConfig.Requirements[playerData.prestigeLevel + 1]
-
-	if not req then
-		return false, "Configuration de prestige introuvable"
-	end
-
-	-- Vérifier l'argent
-	if playerData.money < req.Money then
-		return false, string.format(
-			"Fonds insuffisants : %d / %d",
-			playerData.money, req.Money
-		)
-	end
-
-	-- Vérifier le brainrot requis
-	if not hasBrainrotOfRarity(playerData, req.RequiredBrainrotRarity) then
-		return false, string.format(
-			"Brainrot requis : rareté %s manquante dans l'inventaire",
-			req.RequiredBrainrotRarity
-		)
-	end
 
 	if isMasterRequest then
 		return true, "✦ Maître Prestige disponible !"

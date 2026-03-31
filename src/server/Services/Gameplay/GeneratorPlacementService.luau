@@ -17,9 +17,26 @@ local PlacementService  = require(script.Parent.PlacementService)
 local LevelService      = require(script.Parent.Parent.Progression.LevelService)
 local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
-local _PlayerDataService = nil
-local _GeneratorService  = nil
-local _generatorSlots    = {}  -- [userId_slotName] = slotData
+local _PlayerDataService      = nil
+local _GeneratorService       = nil
+local _generatorSlots         = {}  -- [userId_slotName] = slotData
+local _onRevenuePerSecChanged = ReplicatedStorage
+	:WaitForChild("RemoteInterface")
+	:WaitForChild("Events")
+	:WaitForChild("OnRevenuePerSecondChanged")
+
+local function notifyTotalRevenue(userId)
+	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not playerData then return end
+	local total = 0
+	for _, entry in ipairs(playerData.placedGenerators) do
+		total += entry.RevenuePerSecond or 0
+	end
+	local player = game.Players:GetPlayerByUserId(userId)
+	if player then
+		_onRevenuePerSecChanged:FireClient(player, total)
+	end
+end
 
 local RARITY_COLORS = {
 	Common    = Color3.fromRGB(180, 180, 180),
@@ -53,7 +70,12 @@ local function rollBrainrot(pool)
 end
 
 -- ── Crée le visuel du brainrot sur le socle ──────────────────────────────────
-local function createGeneratorVisual(slotData, rarity, modelName)
+local function tagGeneratorVisual(instance, rarity, revenuePerSecond)
+	instance:SetAttribute("BrainrotRarity",  rarity)
+	instance:SetAttribute("BrainrotRevenue", revenuePerSecond)
+end
+
+local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSecond)
 	local slotCF = slotData.Model.PrimaryPart.CFrame
 	-- Rotation identité : le modèle garde exactement son orientation de Studio (debout)
 	local targetCF = CFrame.new(slotCF.Position + Vector3.new(0, 2, 0))
@@ -117,6 +139,7 @@ local function createGeneratorVisual(slotData, rarity, modelName)
 			clone:PivotTo(CFrame.new(slotCF.Position.X, finalPivotY, slotCF.Position.Z) * CFrame.Angles(0, slotYAngle, 0) * originalRotation)
 			clone.Parent = slotData.Model
 			slotData.GeneratorPart = clone
+			tagGeneratorVisual(clone, rarity, revenuePerSecond)
 			return clone
 		end
 	end
@@ -131,6 +154,7 @@ local function createGeneratorVisual(slotData, rarity, modelName)
 	part.Color     = RARITY_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
 	part.Parent    = slotData.Model
 	slotData.GeneratorPart = part
+	tagGeneratorVisual(part, rarity, revenuePerSecond)
 	return part
 end
 
@@ -159,7 +183,7 @@ function GeneratorPlacementService.InitializePlotSlots(userId)
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.ActionText            = "Poser l'oeuf"
 		prompt.ObjectText            = slotModel.Name
-		prompt.MaxActivationDistance = 32
+		prompt.MaxActivationDistance = 10
 		prompt.RequiresLineOfSight   = false
 		prompt.HoldDuration          = 0
 		prompt.Enabled               = true
@@ -235,7 +259,7 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	slotData.Occupied = true
 
 	-- Visuel
-	createGeneratorVisual(slotData, rarity, brainrot.ModelName)
+	createGeneratorVisual(slotData, rarity, brainrot.ModelName, brainrot.RevenuePerSecond)
 
 	-- Retirer l'item utilisé
 	if isDirectBrainrot then
@@ -249,8 +273,10 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	-- Démarrer la génération d'argent (synchronisée)
 	_GeneratorService.StartGeneratorLoop(userId, slotKey, brainrot.RevenuePerSecond, 1)
 
-	-- Récompense EXP pour le slot rempli
-	LevelService.AddExp(userId, LevelConfig.ExpRewards.GearSlotFilled)
+	-- Récompense EXP uniquement à la première apparition (oeuf), pas si brainrot reposé
+	if not isDirectBrainrot then
+		LevelService.AddExp(userId, LevelConfig.ExpRewards.GearSlotFilled)
+	end
 
 	-- Switch ProximityPrompt → mode "Récupérer"
 	if slotData.PlacementConnection then
@@ -279,6 +305,7 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	})
 
 	_PlayerDataService.SavePlayer(userId)
+	notifyTotalRevenue(userId)
 end
 
 -- ── Restauration des générateurs à la reconnexion ────────────────────────────
@@ -297,7 +324,7 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 		slotData.Occupied = true
 
 		-- Recréer le visuel avec le brainrot sauvegardé
-		createGeneratorVisual(slotData, placedData.Rarity, placedData.ModelName)
+		createGeneratorVisual(slotData, placedData.Rarity, placedData.ModelName, placedData.RevenuePerSecond)
 
 		-- Relancer la génération d'argent (revenue sauvegardé, pas de re-roll)
 		_GeneratorService.StartGeneratorLoop(userId, slotKey, placedData.RevenuePerSecond, 1)
@@ -320,6 +347,7 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 			GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
 		end)
 	end
+	notifyTotalRevenue(userId)
 end
 
 -- ── Récupère un générateur posé et remet l'oeuf dans l'inventaire ────────────
@@ -387,6 +415,12 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
 
 	_PlayerDataService.SavePlayer(userId)
+	notifyTotalRevenue(userId)
+end
+
+-- Appelé depuis PlayerLifecycleHandler avec un délai pour sync initial
+function GeneratorPlacementService.SyncRevenueToClient(userId)
+	notifyTotalRevenue(userId)
 end
 
 return GeneratorPlacementService

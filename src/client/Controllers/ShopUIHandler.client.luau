@@ -18,6 +18,7 @@
 -- IMPORTS & VARIABLES
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SpawnerConfig = require(ReplicatedStorage.Shared.SpawnerConfig)
 local player = Players.LocalPlayer
 
 -- Shop UI
@@ -43,8 +44,36 @@ local onMoneyChanged = ReplicatedStorage:WaitForChild("RemoteInterface"):WaitFor
 local currentMoney = 0
 local isProcessing = false
 
+-- Met à jour le texte de prix sur un bouton depuis SpawnerConfig
+local function applyPrice(button, rarity)
+	local cfg = SpawnerConfig[rarity]
+	if not cfg then return end
+	local priceText = "$" .. tostring(cfg.BasePrice)
+	-- Cherche d'abord un label enfant dédié au prix
+	local priceLabel = button:FindFirstChild("PriceLabel") or button:FindFirstChild("Price")
+	if priceLabel then
+		priceLabel.Text = priceText
+	else
+		-- Sinon on injecte directement dans le Text du bouton
+		-- On remplace uniquement la partie prix (après le saut de ligne s'il y en a un)
+		local existing = button.Text
+		local newline = existing:find("\n")
+		if newline then
+			button.Text = existing:sub(1, newline) .. priceText
+		else
+			button.Text = existing .. "\n" .. priceText
+		end
+	end
+end
+
 -- Start with shop closed
 shopUI.Enabled = false
+
+-- Appliquer les prix depuis la config dès le chargement
+applyPrice(commonButton,   "Common")
+applyPrice(rareButton,     "Rare")
+applyPrice(epicButton,     "Epic")
+applyPrice(legendaryButton,"Legendary")
 
 -- Toggles shop UI visibility
 local function toggleShop()

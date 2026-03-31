@@ -81,9 +81,6 @@ function ShopService.PurchaseSpawner(userId, rarity)
 	_MoneyService.DeductMoney(userId, price)
 	playerData:AddToInventory(rarity)
 
-	-- Récompense EXP pour l'achat
-	LevelService.AddExp(userId, LevelConfig.ExpRewards.SpawnerPurchased[rarity] or 0)
-
 	-- Donner le tool au joueur
 	if player then
 		PlacementService.GiveSpawnerTool(player, rarity)

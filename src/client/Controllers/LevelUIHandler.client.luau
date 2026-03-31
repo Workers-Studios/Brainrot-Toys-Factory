@@ -21,21 +21,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
 
--- ─── Modules partagés (requis une seule fois au niveau module) ────────────────
-local LevelConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("LevelConfig"))
 
 -- ─── Attendre les remotes ─────────────────────────────────────────────────────
 local RemoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
 local onLevelChanged  = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
 
 -- ─── Référence à l'UI ─────────────────────────────────────────────────────────
--- On attend l'existence des éléments UI (peuvent être chargés après le script)
-local HUD         = PlayerGui:WaitForChild("HUD", 10)
-local LevelFrame  = HUD and HUD:FindFirstChild("LevelFrame")
-local LevelLabel  = LevelFrame and LevelFrame:FindFirstChild("LevelLabel")
-local ExpBar      = LevelFrame and LevelFrame:FindFirstChild("ExpBar")
-local ExpFill     = ExpBar     and ExpBar:FindFirstChild("Fill")
-local ExpLabel    = LevelFrame and LevelFrame:FindFirstChild("ExpLabel")
+-- LevelFrame est créé dynamiquement par HUDSetup → on attend son apparition
+local HUD         = PlayerGui:WaitForChild("HUD")
+local LevelFrame  = HUD:WaitForChild("LevelFrame")
+local LevelLabel  = LevelFrame:WaitForChild("LevelLabel")
+local ExpBar      = LevelFrame:WaitForChild("ExpBar")
+local ExpFill     = ExpBar:WaitForChild("Fill")
+local ExpLabel    = LevelFrame:WaitForChild("ExpLabel")
 
 -- ─── Mise à jour de l'affichage ───────────────────────────────────────────────
 local function updateUI(level, exp, expForNext)
@@ -46,18 +44,12 @@ local function updateUI(level, exp, expForNext)
 		LevelLabel.Text = "Niveau " .. tostring(level)
 	end
 
-	-- Barre d'EXP
+	-- Barre d'EXP (système relatif : exp repart à 0 à chaque niveau)
 	if ExpFill and ExpBar then
 		if expForNext and expForNext > 0 then
-			-- EXP de la tranche actuelle
-			local expBase = LevelConfig.ExpRequired[level] or 0
-			local expInLevel  = exp - expBase
-			local expNeeded   = expForNext - expBase
-
-			local ratio = math.clamp(expInLevel / math.max(expNeeded, 1), 0, 1)
+			local ratio = math.clamp(exp / expForNext, 0, 1)
 			ExpFill.Size = UDim2.new(ratio, 0, 1, 0)
 		else
-			-- Niveau maximum → barre pleine
 			ExpFill.Size = UDim2.new(1, 0, 1, 0)
 		end
 	end

@@ -76,8 +76,8 @@ end)
 -- Admin Panel
 local adminPanel = Instance.new("Frame")
 adminPanel.Name = "AdminPanel"
-adminPanel.Size = UDim2.new(0, 400, 0, 500)
-adminPanel.Position = UDim2.new(0.5, -200, 0.5, -250)
+adminPanel.Size = UDim2.new(0, 400, 0, 660)
+adminPanel.Position = UDim2.new(0.5, -200, 0.5, -330)
 adminPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 adminPanel.Visible = false
 adminPanel.Parent = adminUI
@@ -236,19 +236,20 @@ rarityLabel.TextXAlignment = Enum.TextXAlignment.Left
 rarityLabel.Parent = adminPanel
 
 local rarityButtons = {}
-local rarities = {"Common", "Rare", "Epic", "Legendary"}
+local rarities = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
 local selectedRarity = "Common"
 
+local rarityCount = #rarities
 for i, rarity in ipairs(rarities) do
 	local btn = Instance.new("TextButton")
 	btn.Name = rarity .. "Button"
-	btn.Size = UDim2.new(0.23, 0, 0, 30)
-	btn.Position = UDim2.new((i-1) * 0.25 + 0.01, 0, 0, 390)
+	btn.Size = UDim2.new(1 / rarityCount - 0.01, 0, 0, 30)
+	btn.Position = UDim2.new((i-1) / rarityCount + 0.005, 0, 0, 390)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Text = rarity
 	btn.Font = Enum.Font.Gotham
-	btn.TextSize = 12
+	btn.TextSize = 11
 	btn.Parent = adminPanel
 
 	local btnCorner = Instance.new("UICorner")
@@ -273,6 +274,90 @@ giveSpawnerButton.Parent = adminPanel
 local giveSpawnerCorner = Instance.new("UICorner")
 giveSpawnerCorner.CornerRadius = UDim.new(0, 6)
 giveSpawnerCorner.Parent = giveSpawnerButton
+
+-- ─── Section Progression ─────────────────────────────────────────────────────
+local progSep = Instance.new("Frame")
+progSep.Name = "ProgSeparator"
+progSep.Size = UDim2.new(1, -20, 0, 1)
+progSep.Position = UDim2.new(0, 10, 0, 490)
+progSep.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+progSep.BorderSizePixel = 0
+progSep.Parent = adminPanel
+
+local progTitle = Instance.new("TextLabel")
+progTitle.Size = UDim2.new(1, -20, 0, 20)
+progTitle.Position = UDim2.new(0, 10, 0, 498)
+progTitle.BackgroundTransparency = 1
+progTitle.TextColor3 = Color3.fromRGB(180, 180, 255)
+progTitle.Text = "Progression"
+progTitle.Font = Enum.Font.GothamBold
+progTitle.TextSize = 14
+progTitle.TextXAlignment = Enum.TextXAlignment.Left
+progTitle.Parent = adminPanel
+
+-- Add EXP button
+local addExpButton = Instance.new("TextButton")
+addExpButton.Name = "AddExpButton"
+addExpButton.Size = UDim2.new(0.48, 0, 0, 36)
+addExpButton.Position = UDim2.new(0, 10, 0, 523)
+addExpButton.BackgroundColor3 = Color3.fromRGB(30, 140, 80)
+addExpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+addExpButton.Text = "Add EXP"
+addExpButton.Font = Enum.Font.GothamBold
+addExpButton.TextSize = 13
+addExpButton.Parent = adminPanel
+Instance.new("UICorner", addExpButton).CornerRadius = UDim.new(0, 6)
+
+-- Set Level button
+local setLevelButton = Instance.new("TextButton")
+setLevelButton.Name = "SetLevelButton"
+setLevelButton.Size = UDim2.new(0.48, 0, 0, 36)
+setLevelButton.Position = UDim2.new(0.52, 0, 0, 523)
+setLevelButton.BackgroundColor3 = Color3.fromRGB(30, 80, 160)
+setLevelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+setLevelButton.Text = "Set Level"
+setLevelButton.Font = Enum.Font.GothamBold
+setLevelButton.TextSize = 13
+setLevelButton.Parent = adminPanel
+Instance.new("UICorner", setLevelButton).CornerRadius = UDim.new(0, 6)
+
+-- Set Prestige button
+local setPrestigeButton = Instance.new("TextButton")
+setPrestigeButton.Name = "SetPrestigeButton"
+setPrestigeButton.Size = UDim2.new(0.48, 0, 0, 36)
+setPrestigeButton.Position = UDim2.new(0, 10, 0, 567)
+setPrestigeButton.BackgroundColor3 = Color3.fromRGB(120, 30, 160)
+setPrestigeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+setPrestigeButton.Text = "Set Prestige"
+setPrestigeButton.Font = Enum.Font.GothamBold
+setPrestigeButton.TextSize = 13
+setPrestigeButton.Parent = adminPanel
+Instance.new("UICorner", setPrestigeButton).CornerRadius = UDim.new(0, 6)
+
+-- Give Brainrot button (uses selectedRarity from rarity selector above)
+local giveBrainrotButton = Instance.new("TextButton")
+giveBrainrotButton.Name = "GiveBrainrotButton"
+giveBrainrotButton.Size = UDim2.new(0.48, 0, 0, 36)
+giveBrainrotButton.Position = UDim2.new(0.52, 0, 0, 567)
+giveBrainrotButton.BackgroundColor3 = Color3.fromRGB(180, 100, 20)
+giveBrainrotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+giveBrainrotButton.Text = "Give Brainrot"
+giveBrainrotButton.Font = Enum.Font.GothamBold
+giveBrainrotButton.TextSize = 13
+giveBrainrotButton.Parent = adminPanel
+Instance.new("UICorner", giveBrainrotButton).CornerRadius = UDim.new(0, 6)
+
+local progNote = Instance.new("TextLabel")
+progNote.Size = UDim2.new(1, -20, 0, 18)
+progNote.Position = UDim2.new(0, 10, 0, 613)
+progNote.BackgroundTransparency = 1
+progNote.TextColor3 = Color3.fromRGB(140, 140, 140)
+progNote.Text = "Amount = EXP / Level / Prestige  •  Rarity = Brainrot rarity"
+progNote.Font = Enum.Font.Gotham
+progNote.TextSize = 10
+progNote.TextXAlignment = Enum.TextXAlignment.Left
+progNote.TextWrapped = true
+progNote.Parent = adminPanel
 
 -- Local state
 local selectedPlayer = nil
@@ -407,4 +492,34 @@ giveSpawnerButton.MouseButton1Click:Connect(function()
 
 	executeCommandRemote:FireServer("GiveSpawner", selectedPlayer, selectedRarity)
 	print("Gave", selectedRarity, "spawner to", selectedPlayer)
+end)
+
+addExpButton.MouseButton1Click:Connect(function()
+	local amount = tonumber(amountInput.Text)
+	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
+	if not amount or amount <= 0 then warn("Invalid amount") return end
+	executeCommandRemote:FireServer("AddExp", selectedPlayer, amount)
+	print("Added", amount, "EXP to", selectedPlayer)
+end)
+
+setLevelButton.MouseButton1Click:Connect(function()
+	local level = tonumber(amountInput.Text)
+	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
+	if not level or level < 1 then warn("Invalid level") return end
+	executeCommandRemote:FireServer("SetLevel", selectedPlayer, level)
+	print("Set", selectedPlayer, "to level", level)
+end)
+
+setPrestigeButton.MouseButton1Click:Connect(function()
+	local prestige = tonumber(amountInput.Text)
+	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
+	if not prestige or prestige < 0 then warn("Invalid prestige") return end
+	executeCommandRemote:FireServer("SetPrestige", selectedPlayer, prestige)
+	print("Set", selectedPlayer, "prestige to", prestige)
+end)
+
+giveBrainrotButton.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
+	executeCommandRemote:FireServer("GiveBrainrot", selectedPlayer, selectedRarity)
+	print("Gave", selectedRarity, "brainrot to", selectedPlayer)
 end)

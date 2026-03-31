@@ -61,7 +61,7 @@ getOrCreate(AdminFolder, "RemoteEvent",    "ExecuteCommand")
 print("✅ RemoteInterface prêt")
 
 -- ─── Import configuration ───────────────────────────────────────────────────
-local SpawnerConfig   = require(script.Parent.Parent.Config.SpawnerConfig)
+local SpawnerConfig   = require(game:GetService("ReplicatedStorage").Shared.SpawnerConfig)
 local ToyConfig       = require(script.Parent.Parent.Config.ToyConfig)
 local GeneratorConfig = require(script.Parent.Parent.Config.GeneratorConfig)
 local GameConfig      = require(script.Parent.Parent.Config.GameConfig)
@@ -119,7 +119,6 @@ safeInit("PlotService",         function() PlotService.Init() end)
 safeInit("PlayerDataService",   function() PlayerDataService.Init(DataService, PlayerData) end)
 safeInit("MoneyService",        function() MoneyService.Init(PlayerDataService) end)
 safeInit("AntiExploitService",  function() AntiExploitService.Init() end)
-safeInit("AdminService",        function() AdminService.Init(PlayerDataService, MoneyService) end)
 
 -- ─── Gameplay ────────────────────────────────────────────────────────────────
 safeInit("SpawnerService",             function() SpawnerService.Init(SpawnerConfig, ToyConfig, PlayerDataService) end)
@@ -133,8 +132,9 @@ safeInit("GeneratorPlacementService",  function() GeneratorPlacementService.Init
 safeInit("ShopService", function() ShopService.Init(SpawnerConfig, MoneyService, PlayerDataService) end)
 
 -- ─── Progression ─────────────────────────────────────────────────────────────
-safeInit("LevelService",   function() LevelService.Init(PlayerDataService) end)
+safeInit("LevelService",    function() LevelService.Init(PlayerDataService) end)
 safeInit("PrestigeService", function() PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig) end)
+safeInit("AdminService",    function() AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService) end)
 
 -- ─── Handlers ────────────────────────────────────────────────────────────────
 safeInit("PlayerLifecycleHandler", function()

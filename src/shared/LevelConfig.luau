@@ -1,39 +1,35 @@
 --[[
 	Configuration du système de niveaux et d'EXP
 
-	Le joueur monte de niveau (1 → 50) en gagnant de l'EXP via ses actions.
-	Après le Maître Prestige, le cap de 50 est supprimé (niveaux illimités).
+	Système d'EXP relatif : playerData.exp représente l'EXP dans le niveau actuel
+	(repart à 0 à chaque level up, le surplus est conservé).
 
-	Toutes les valeurs sont des PLACEHOLDERS : à équilibrer selon les tests.
-
-	Formule d'EXP requise par niveau :
-	  ExpRequired[level] = floor(100 * level^1.6)
-	  → Niveau  1 → 2  : 100 EXP
-	  → Niveau 10 → 11 : ~2512 EXP
-	  → Niveau 49 → 50 : ~32 000 EXP  (approximatif)
+	Niveaux 1-50  : floor(500 * level^1.5) arrondi à la centaine
+	Niveaux 51+   : floor(50000 * (level-49)^1.4) — illimité après Maître Prestige
 ]]
 
 local LevelConfig = {}
 
--- Cap de niveau (identique à PrestigeConfig.MaxLevel — dupliqué ici pour éviter une dépendance circulaire)
 LevelConfig.MaxLevel = 50
 
--- EXP total cumulé requis pour ATTEINDRE chaque niveau
--- Calculé dynamiquement pour éviter la duplication manuelle
--- Index = niveau cible (2 à 200, 200 couvre les niveaux illimités post-Maître Prestige)
-LevelConfig.ExpRequired = (function()
-	local t = { [1] = 0 }  -- Le niveau 1 ne coûte rien
-	for level = 2, 200 do
-		t[level] = math.floor(100 * (level ^ 1.6))
-	end
-	return t
-end)()
+-- Seuil d'EXP requis pour passer AU niveau suivant depuis ce niveau
+-- Niveaux 1-50 pré-calculés (arrondi centaine), 51+ calculés à la volée
+local _table = {}
+for lvl = 1, 50 do
+	_table[lvl] = math.round(500 * lvl ^ 1.5 / 100) * 100
+end
 
--- ─── Récompenses d'EXP par action ──────────────────────────────────────────
--- Toutes les valeurs sont des PLACEHOLDERS
+function LevelConfig.GetExpRequired(level)
+	if level <= 50 then
+		return _table[level]
+	else
+		return math.floor(50000 * (level - 49) ^ 1.4)
+	end
+end
+
+-- ─── Récompenses d'EXP par action ───────────────────────────────────────────
 LevelConfig.ExpRewards = {
 
-	-- Brainrot généré par un générateur (selon la rareté)
 	BrainrotGenerated = {
 		Common    = 5,
 		Uncommon  = 15,
@@ -42,7 +38,6 @@ LevelConfig.ExpRewards = {
 		Legendary = 150,
 	},
 
-	-- Brainrot vendu (selon la rareté)
 	BrainrotSold = {
 		Common    = 2,
 		Uncommon  = 8,
@@ -51,16 +46,10 @@ LevelConfig.ExpRewards = {
 		Legendary = 80,
 	},
 
-	-- Slot d'engrenage rempli
 	GearSlotFilled = 25,
-
-	-- Spawner posé sur un slot de plot
-	SpawnerPlaced = 10,
-
-	-- Quota complété (rareté quelconque)
+	SpawnerPlaced  = 10,
 	QuotaCompleted = 50,
 
-	-- Achat d'un spawner dans la boutique (selon la rareté)
 	SpawnerPurchased = {
 		Common    = 3,
 		Uncommon  = 8,

@@ -157,8 +157,6 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 	toy.Name   = "Toy_" .. toyRarity .. "_" .. userId
 	toy.Parent = plot or workspace
 
-	-- Récompense EXP pour le toy généré
-	LevelService.AddExp(userId, LevelConfig.ExpRewards.BrainrotGenerated[toyRarity] or 0)
 end
 
 return SpawnerService

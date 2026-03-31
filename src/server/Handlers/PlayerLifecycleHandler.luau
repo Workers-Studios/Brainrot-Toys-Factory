@@ -23,7 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Dependencies (required once)
 local PlotService = require(script.Parent.Parent.Services.Core.PlotService)
 local PlacementService = require(script.Parent.Parent.Services.Gameplay.PlacementService)
-local SpawnerConfig = require(script.Parent.Parent.Config.SpawnerConfig)
+local SpawnerConfig = require(game:GetService("ReplicatedStorage").Shared.SpawnerConfig)
 local GeneratorPlacementService = require(script.Parent.Parent.Services.Gameplay.GeneratorPlacementService)
 local ConveyorService = require(script.Parent.Parent.Services.Gameplay.ConveyorService)
 local ToyConfig = require(script.Parent.Parent.Config.ToyConfig)
@@ -226,6 +226,12 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 	if not success5 then
 		warn("Error restoring generators:", err5)
 	end
+
+	-- Délai pour que le client ait le temps de connecter son OnClientEvent
+	task.spawn(function()
+		task.wait(1)
+		GeneratorPlacementService.SyncRevenueToClient(userId)
+	end)
 
 	print("✅ Player connected:", player.Name)
 end

@@ -118,9 +118,6 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 	-- Récompense : oeuf de la rareté du toy collecté
 	_PlayerDataService.AddGenerator(userId, rarity)
 
-	-- Récompense EXP pour quota complété
-	LevelService.AddExp(userId, LevelConfig.ExpRewards.QuotaCompleted)
-
 	local player = game.Players:GetPlayerByUserId(userId)
 	if player then
 		local PlacementService = require(script.Parent.PlacementService)
