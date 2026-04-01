@@ -51,27 +51,51 @@ local RARITY_COLORS = {
 	Legendary = Color3.fromRGB(255, 215, 0),
 }
 
+-- Pool dynamique : construit en scannant BrainrotModels/{rarity}/ au démarrage
+local _dynamicPools = {}  -- [rarity] = { {Name, ModelName, Weight, RevenuePerSecond}, ... }
+
+local function buildDynamicPools(GeneratorConfig)
+	local brainrotModels = ServerStorage:FindFirstChild("BrainrotModels")
+	if not brainrotModels then
+		warn("[GPS] ❌ BrainrotModels introuvable — pools dynamiques vides")
+		return
+	end
+
+	for rarity, rarityData in pairs(GeneratorConfig) do
+		local tierFolder = brainrotModels:FindFirstChild(rarity)
+		if not tierFolder then
+			warn("[GPS] ⚠️ Dossier BrainrotModels/" .. rarity .. " introuvable")
+			continue
+		end
+
+		local pool = {}
+		for _, folder in ipairs(tierFolder:GetChildren()) do
+			table.insert(pool, {
+				Name             = folder.Name,
+				ModelName        = folder.Name,
+				Weight           = 1,  -- poids égal entre tous les brainrots d'une rareté
+				RevenuePerSecond = rarityData.RevenuePerSecond or 0,
+			})
+		end
+
+		_dynamicPools[rarity] = pool
+		print(string.format("[GPS] Pool %s : %d brainrots chargés", rarity, #pool))
+	end
+end
+
 function GeneratorPlacementService.Init(PlayerDataService, GeneratorService)
 	_PlayerDataService = PlayerDataService
 	_GeneratorService  = GeneratorService
+
+	local GeneratorConfig = require(script.Parent.Parent.Parent.Config.GeneratorConfig)
+	buildDynamicPools(GeneratorConfig)
+
 	print("GeneratorPlacementService initialized")
 end
 
--- ── Tire aléatoirement un brainrot dans la pool selon les poids ───────────────
+-- ── Tire aléatoirement un brainrot dans la pool (poids égaux) ────────────────
 local function rollBrainrot(pool)
-	local total = 0
-	for _, entry in ipairs(pool) do
-		total += entry.Weight
-	end
-	local roll = math.random() * total
-	local cumulative = 0
-	for _, entry in ipairs(pool) do
-		cumulative += entry.Weight
-		if roll <= cumulative then
-			return entry
-		end
-	end
-	return pool[#pool]
+	return pool[math.random(1, #pool)]
 end
 
 -- ── Tire une variante au hasard selon les poids de VariantConfig ─────────────
@@ -111,6 +135,18 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 		local tierFolder     = brainrotModels and brainrotModels:FindFirstChild(rarity)
 		local brainrotFolder = tierFolder and tierFolder:FindFirstChild(modelName)
 
+		if not brainrotModels then
+			warn("[GPS] ❌ BrainrotModels introuvable dans ServerStorage")
+		elseif not tierFolder then
+			warn("[GPS] ❌ Dossier rareté introuvable :", rarity)
+		elseif not brainrotFolder then
+			warn("[GPS] ❌ Dossier brainrot introuvable :", modelName, "dans", rarity)
+			-- Lister ce qui existe pour aider au diagnostic
+			local available = {}
+			for _, c in ipairs(tierFolder:GetChildren()) do table.insert(available, c.Name) end
+			warn("[GPS]    Dossiers disponibles :", table.concat(available, ", "))
+		end
+
 		-- Convention de nommage :
 		--   Normal  → "Fluri Flura"       (juste le nom du brainrot)
 		--   Gold    → "Gold Fluri Flura"  ({variant} {nomBrainrot})
@@ -119,11 +155,12 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 			or (variantToUse .. " " .. modelName)
 
 		local template = brainrotFolder and brainrotFolder:FindFirstChild(modelInstanceName)
-		-- Fallback : premier enfant si la variante exacte n'existe pas
 		if not template and brainrotFolder then
+			warn("[GPS] ❌ Modèle introuvable :", modelInstanceName, "— fallback premier enfant")
 			local children = brainrotFolder:GetChildren()
 			if #children > 0 then
 				template = children[1]
+				warn("[GPS]    Fallback sur :", template.Name)
 			end
 		end
 
@@ -292,14 +329,13 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		if not eggRarity then return end
 		rarity = eggRarity
 
-		local GeneratorConfig = require(script.Parent.Parent.Parent.Config.GeneratorConfig)
-		local rarityConfig = GeneratorConfig[rarity]
-		if not rarityConfig or not rarityConfig.Pool or #rarityConfig.Pool == 0 then
-			warn("Pas de Pool pour la rareté:", rarity)
+		local pool = _dynamicPools[rarity]
+		if not pool or #pool == 0 then
+			warn("Pas de pool dynamique pour la rareté:", rarity)
 			return
 		end
 
-		brainrot = rollBrainrot(rarityConfig.Pool)
+		brainrot = rollBrainrot(pool)
 
 		-- Tirage de variante
 		local multiplier

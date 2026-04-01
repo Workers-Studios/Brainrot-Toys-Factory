@@ -47,6 +47,16 @@ function PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
 		task.spawn(PlayerLifecycleHandler.OnPlayerAdded, player)
 	end
 
+	-- Sauvegarde tous les joueurs encore connectés si le serveur s'éteint brusquement
+	game:BindToClose(function()
+		for _, player in ipairs(Players:GetPlayers()) do
+			local userId = player.UserId
+			if _PlayerDataService.GetPlayerData(userId) then
+				_PlayerDataService.SavePlayerImmediate(userId)
+			end
+		end
+	end)
+
 	print("PlayerLifecycleHandler initialized")
 end
 
