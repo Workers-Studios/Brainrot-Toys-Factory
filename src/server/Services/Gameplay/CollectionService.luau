@@ -57,19 +57,34 @@ function CollectionService.OnToyCollected(toy)
 	local userId = part:GetAttribute("OwnerId")
 
 	if not rarity or not userId then
-		toy:Destroy()
+		-- Part visuelle sans attribut (CanCollide=false) → ignorer silencieusement
 		return
 	end
 
 	if not _ToyConfig[rarity] then
-		toy:Destroy()
+		CollectionService.DestroyToy(toy)
 		return
 	end
 
 	CollectionService.IncrementQuota(userId, rarity)
 	CollectionService.CheckQuotaComplete(userId, rarity)
 
-	toy:Destroy()
+	CollectionService.DestroyToy(toy)
+end
+
+-- Détruit le toy complet (Model wrapper ou Part standalone)
+function CollectionService.DestroyToy(toy)
+	if toy:IsA("Model") then
+		toy:Destroy()
+	elseif toy:IsA("BasePart") then
+		-- Remonter au Model parent si c'est la sphère physique
+		local parent = toy.Parent
+		if parent and parent:IsA("Model") then
+			parent:Destroy()
+		else
+			toy:Destroy()
+		end
+	end
 end
 
 -- Incrémente le quota d'une rareté pour un joueur
@@ -87,8 +102,8 @@ function CollectionService.IncrementQuota(userId, rarity)
 
 	playerData.quotaProgress[rarity] += 1
 
-	-- Save déboncé
-	_PlayerDataService.SavePlayer(userId)
+	-- Pas de save ici : trop fréquent → throttling DataStore
+	-- Sauvegardé par CheckQuotaComplete (SavePlayerImmediate) et AutoSaveHandler
 
 	-- Notifier le client
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated
@@ -131,8 +146,7 @@ function CollectionService.CheckQuotaComplete(userId, rarity)
 	-- Reset quota
 	playerData.quotaProgress[rarity] = 0
 
-	-- Save immédiat (récompense critique)
-	_PlayerDataService.SavePlayerImmediate(userId)
+	-- Pas de save ici, géré au quit du joueur
 
 	-- Notifier le client du reset
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated

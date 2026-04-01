@@ -274,7 +274,6 @@ function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName, player)
 	end)
 
 	table.insert(playerData.placedSpawners, {SlotName = slotName, Rarity = rarity})
-	_PlayerDataService.SavePlayer(userId)
 
 	return true
 end
@@ -350,8 +349,6 @@ function PlacementService.PickupSpawner(userId, slotName, player)
 	if player then
 		PlacementService.GiveSpawnerTool(player, rarity)
 	end
-
-	_PlayerDataService.SavePlayer(userId)
 end
 
 -- Checks if a slot is available for placement
@@ -477,7 +474,7 @@ end
 -- ── Brainrot Tools ────────────────────────────────────────────────────────────
 
 -- Donne un brainrot spécifique comme Tool stacké dans le backpack
-function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rarity, revenuePerSecond)
+function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rarity, revenuePerSecond, variant)
 	local toolName = "Brainrot_" .. brainrotName
 
 	local existing = player.Backpack:FindFirstChild(toolName)
@@ -495,6 +492,7 @@ function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rari
 	tool:SetAttribute("ModelName",        modelName or "")
 	tool:SetAttribute("Rarity",           rarity)
 	tool:SetAttribute("RevenuePerSecond", revenuePerSecond)
+	tool:SetAttribute("BrainrotVariant",  variant or "Normal")
 	tool:SetAttribute("Count",            1)
 
 	local handle = Instance.new("Part")

@@ -70,7 +70,6 @@ function LevelService.AddExp(userId, amount)
 	end
 
 	notifyClient(userId, playerData)
-	_PlayerDataService.SavePlayer(userId)
 end
 
 -- Envoie les données initiales au client à la connexion

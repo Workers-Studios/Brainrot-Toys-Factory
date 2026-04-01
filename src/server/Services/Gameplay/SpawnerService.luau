@@ -1,7 +1,7 @@
 --[[
 	Gestion des spawners de toys
 	Chaque spawner roll une rareté via ses DropRates, puis pioche un modèle
-	aléatoire dans ServerStorage/ToyModels/{ToyRarity}/
+	aléatoire dans ServerStorage/BrainrotModels/{ToyRarity}/{NomBrainrot}/{Variante}
 
 	Fallback : Part colorée si le dossier est vide ou absent
 ]]
@@ -15,6 +15,9 @@ local PlotService       = require(script.Parent.Parent.Core.PlotService)
 local LevelService      = require(script.Parent.Parent.Progression.LevelService)
 local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
+-- Les toys sont des miniatures : 30% de la taille originale du modèle
+local TOY_SCALE = 0.3
+
 -- Les toys ne se collisionnent pas entre eux
 pcall(function() PhysicsService:RegisterCollisionGroup("Toys") end)
 pcall(function() PhysicsService:CollisionGroupSetCollidable("Toys", "Toys", false) end)
@@ -26,9 +29,6 @@ local RARITY_COLORS = {
 	Epic      = Color3.fromRGB(128, 0,   128),
 	Legendary = Color3.fromRGB(255, 215, 0),
 }
-
--- Ordre fixe pour le roll cumulatif
-local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary" }
 
 local _SpawnerConfig    = nil
 local _PlayerDataService = nil
@@ -70,31 +70,40 @@ function SpawnerService.StopSpawner(userId, slotName)
 	_activeSpawners[userId .. "_" .. slotName] = nil
 end
 
--- Roll la rareté du toy selon les DropRates du spawner
-local function rollToyRarity(dropRates)
-	local roll = math.random()
-	local cumulative = 0
-	for _, rarity in ipairs(RARITY_ORDER) do
-		local rate = dropRates[rarity]
-		if rate then
-			cumulative += rate
-			if roll <= cumulative then
-				return rarity
-			end
-		end
-	end
-	return "Common"  -- fallback
+-- Calcule l'angle Y (snappé à 90°) vers la zone de collection du plot
+local function getCollectorAngle(fromPos, plot)
+	if not plot then return 0 end
+	local col  = plot:FindFirstChild("Collection", true)
+	local zone = col and col:FindFirstChild("StructureCollectionZone")
+	local ref  = zone and (zone.PrimaryPart or zone:FindFirstChildWhichIsA("BasePart"))
+	if not ref then return 0 end
+	local toRef    = ref.Position - fromPos
+	local rawAngle = math.atan2(toRef.X, toRef.Z) + math.pi
+	return math.rad(math.round(math.deg(rawAngle) / 90) * 90)
 end
 
--- Pioche un modèle aléatoire dans ServerStorage/ToyModels/{rarity}
+-- Pioche un modèle aléatoire dans :
+--   ServerStorage/GeneratorModels/{rarity}/
 local function pickRandomModel(rarity)
-	local toyModels = ServerStorage:FindFirstChild("ToyModels")
-	if not toyModels then return nil end
-	local folder = toyModels:FindFirstChild(rarity)
-	if not folder then return nil end
-	local models = folder:GetChildren()
-	if #models == 0 then return nil end
-	return models[math.random(1, #models)]
+	local generatorModels = ServerStorage:FindFirstChild("GeneratorModels")
+	if not generatorModels then
+		warn("[SpawnerService] ❌ Dossier 'GeneratorModels' introuvable dans ServerStorage")
+		return nil
+	end
+
+	local tierFolder = generatorModels:FindFirstChild(rarity)
+	if not tierFolder then
+		warn("[SpawnerService] ❌ Dossier rareté introuvable :", rarity)
+		return nil
+	end
+
+	local children = tierFolder:GetChildren()
+	if #children == 0 then
+		warn("[SpawnerService] ❌ Aucun modèle dans GeneratorModels/" .. rarity)
+		return nil
+	end
+
+	return children[math.random(1, #children)]
 end
 
 -- Spawne un toy au niveau du spawner
@@ -104,59 +113,74 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 	local spawnerConfig = _SpawnerConfig[spawnerRarity]
 	if not spawnerConfig then return end
 
-	-- Roll la rareté du toy
-	local toyRarity = rollToyRarity(spawnerConfig.DropRates)
+	local plot     = PlotService.GetPlot(userId)
+	local template = pickRandomModel(spawnerRarity)
 
-	local plot    = PlotService.GetPlot(userId)
-	local template = pickRandomModel(toyRarity)
-	local toy
+	-- ── Préparer le visuel ───────────────────────────────────────────────────
+	local visual = nil
+	if template and template:IsA("Model") then
+		visual = template:Clone()
+		pcall(function() visual:ScaleTo(TOY_SCALE) end)
+	end
 
-	if template then
-		if template:IsA("Model") then
-			toy = template:Clone()
-			for _, part in ipairs(toy:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.Anchored       = false
-					part.CanCollide     = true
-					part.CollisionGroup = "Toys"
-				end
+	-- ── Position de spawn ─────────────────────────────────────────────────────
+	local spawnPos = spawnerPart.Position + Vector3.new(0, 1.5, 0)
+	local spawnCF  = CFrame.new(spawnPos)
+
+	-- ── Corps physique : petite sphère invisible ─────────────────────────────
+	local root = Instance.new("Part")
+	root.Name           = "PhysicsRoot"
+	root.Shape          = Enum.PartType.Ball
+	root.Size           = Vector3.new(0.9, 0.9, 0.9)
+	root.Transparency   = 1
+	root.CanCollide     = true
+	root.CollisionGroup = "Toys"
+	root.Anchored       = false
+	root.CFrame         = spawnCF
+	root:SetAttribute("ToyRarity", spawnerRarity)
+	root:SetAttribute("OwnerId",   userId)
+
+	-- Bloquer toute rotation (le toy glisse sans tourner sur lui-même)
+	local bav = Instance.new("BodyAngularVelocity")
+	bav.AngularVelocity = Vector3.zero
+	bav.MaxTorque       = Vector3.new(1e6, 1e6, 1e6)
+	bav.P               = 1e5
+	bav.Parent          = root
+
+	-- ── Conteneur Model ───────────────────────────────────────────────────────
+	local toyModel        = Instance.new("Model")
+	toyModel.Name         = "Toy_" .. spawnerRarity .. "_" .. userId
+	toyModel.PrimaryPart  = root
+	root.Parent           = toyModel
+
+	-- ── Modèle visuel soudé au root ───────────────────────────────────────────
+	if visual then
+		-- Le visuel ne participe pas à la physique
+		for _, part in ipairs(visual:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+				part.Massless   = true
+				part.Anchored   = false
 			end
-			local _, size = toy:GetBoundingBox()
-			toy:PivotTo(CFrame.new(spawnerPart.Position + Vector3.new(0, size.Y / 2 + 1, 0)))
+		end
 
-			local primary = toy.PrimaryPart or toy:FindFirstChildWhichIsA("BasePart")
-			if primary then
-				primary:SetAttribute("ToyRarity", toyRarity)
-				primary:SetAttribute("OwnerId",   userId)
-			end
-
-		elseif template:IsA("BasePart") then
-			toy = template:Clone()
-			toy.Anchored       = false
-			toy.CanCollide     = true
-			toy.CollisionGroup = "Toys"
-			toy.Position       = spawnerPart.Position + Vector3.new(0, toy.Size.Y / 2 + 1, 0)
-			toy:SetAttribute("ToyRarity", toyRarity)
-			toy:SetAttribute("OwnerId",   userId)
+		local primaryVisual = visual.PrimaryPart or visual:FindFirstChildWhichIsA("BasePart")
+		if primaryVisual then
+			local originalRotation = template:GetPivot().Rotation
+			local visualOffset = Vector3.new(0, 1.0, 0)
+			local yAngle = getCollectorAngle(spawnPos, plot)
+			visual:PivotTo(CFrame.new(spawnCF.Position + visualOffset) * CFrame.Angles(0, yAngle, 0) * originalRotation)
+			visual.Parent = toyModel
+			local weld   = Instance.new("WeldConstraint")
+			weld.Part0   = root
+			weld.Part1   = primaryVisual
+			weld.Parent  = root
+		else
+			visual.Parent = toyModel
 		end
 	end
 
-	-- Fallback : Part colorée
-	if not toy then
-		toy = Instance.new("Part")
-		toy.Size           = Vector3.new(1, 1, 1)
-		toy.Color          = RARITY_COLORS[toyRarity] or Color3.fromRGB(200, 200, 200)
-		toy.Anchored       = false
-		toy.CanCollide     = true
-		toy.CollisionGroup = "Toys"
-		toy.Position       = spawnerPart.Position + Vector3.new(0, 1.5, 0)
-		toy:SetAttribute("ToyRarity", toyRarity)
-		toy:SetAttribute("OwnerId",   userId)
-	end
-
-	toy.Name   = "Toy_" .. toyRarity .. "_" .. userId
-	toy.Parent = plot or workspace
-
+	toyModel.Parent = plot or workspace
 end
 
 return SpawnerService

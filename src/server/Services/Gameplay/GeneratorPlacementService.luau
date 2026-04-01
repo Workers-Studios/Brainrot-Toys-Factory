@@ -4,8 +4,12 @@
 	Workflow :
 	  Joueur approche un socle → appuie sur E → pose un oeuf de sa rareté
 	  → le système tire aléatoirement un brainrot dans la pool de cette rareté
-	  → ce brainrot génère X$/s selon sa config (RevenuePerSecond)
+	  → tire aussi une variante (Normal, Gold, Diamond, Galaxy, Lava, Rainbow)
+	  → ce brainrot génère X$/s * multiplicateur de variante
 	  → le brainrot tiré est sauvegardé pour restauration à la reconnexion
+
+	Chemins des modèles :
+	  ServerStorage/BrainrotModels/{Rarity}/{NomBrainrot}/{Variante}
 ]]
 
 local GeneratorPlacementService = {}
@@ -16,6 +20,7 @@ local PlotService       = require(script.Parent.Parent.Core.PlotService)
 local PlacementService  = require(script.Parent.PlacementService)
 local LevelService      = require(script.Parent.Parent.Progression.LevelService)
 local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
+local VariantConfig     = require(ReplicatedStorage.Shared.VariantConfig)
 
 local _PlayerDataService      = nil
 local _GeneratorService       = nil
@@ -69,26 +74,54 @@ local function rollBrainrot(pool)
 	return pool[#pool]
 end
 
--- ── Crée le visuel du brainrot sur le socle ──────────────────────────────────
-local function tagGeneratorVisual(instance, rarity, revenuePerSecond)
+-- ── Tire une variante au hasard selon les poids de VariantConfig ─────────────
+-- @return variantName (string), revenueMultiplier (number)
+local function rollVariantName()
+	local totalWeight = 0
+	for _, v in ipairs(VariantConfig.Order) do
+		totalWeight += VariantConfig.Weights[v] or 0
+	end
+
+	local roll = math.random() * totalWeight
+	local cumulative = 0
+	for _, variant in ipairs(VariantConfig.Order) do
+		cumulative += VariantConfig.Weights[variant] or 0
+		if roll <= cumulative then
+			return variant, VariantConfig.RevenueMultiplier[variant] or 1
+		end
+	end
+	return "Normal", 1  -- fallback
+end
+
+-- ── Tags le visuel avec rareté, variante et revenus (pour GeneratorLabelHandler)
+local function tagGeneratorVisual(instance, rarity, variant, revenuePerSecond)
 	instance:SetAttribute("BrainrotRarity",  rarity)
+	instance:SetAttribute("BrainrotVariant", variant or "Normal")
 	instance:SetAttribute("BrainrotRevenue", revenuePerSecond)
 end
 
-local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSecond)
-	local slotCF = slotData.Model.PrimaryPart.CFrame
-	-- Rotation identité : le modèle garde exactement son orientation de Studio (debout)
-	local targetCF = CFrame.new(slotCF.Position + Vector3.new(0, 2, 0))
+-- ── Crée le visuel du brainrot sur le socle ──────────────────────────────────
+-- Chemin modèle : BrainrotModels/{rarity}/{modelName}/{variant}
+local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSecond, variant)
+	local slotCF   = slotData.Model.PrimaryPart.CFrame
+	local variantToUse = variant or "Normal"
 
-	-- Tenter de cloner le modèle depuis ServerStorage/GeneratorModels/{rarity}/{modelName}
 	if modelName then
-		local generatorModels = ServerStorage:FindFirstChild("GeneratorModels")
-		local folder = generatorModels and generatorModels:FindFirstChild(rarity)
-		local template = folder and folder:FindFirstChild(modelName)
+		local brainrotModels = ServerStorage:FindFirstChild("BrainrotModels")
+		local tierFolder     = brainrotModels and brainrotModels:FindFirstChild(rarity)
+		local brainrotFolder = tierFolder and tierFolder:FindFirstChild(modelName)
+
+		-- Chercher la variante exacte, sinon fallback sur le premier enfant
+		local template = brainrotFolder and brainrotFolder:FindFirstChild(variantToUse)
+		if not template and brainrotFolder then
+			local children = brainrotFolder:GetChildren()
+			if #children > 0 then
+				template = children[math.random(1, #children)]
+			end
+		end
 
 		if template and template:IsA("Model") then
 			-- Mesurer l'offset pivot→bas sur le template dans ServerStorage
-			-- On ne considère que les parts visibles et non-minuscules pour éviter les parts fantômes
 			local templatePivotY = template:GetPivot().Position.Y
 			local minY = math.huge
 			for _, part in ipairs(template:GetDescendants()) do
@@ -114,11 +147,12 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 			local clone = template:Clone()
 			for _, part in ipairs(clone:GetDescendants()) do
 				if part:IsA("BasePart") then
-					part.Anchored  = true
+					part.Anchored   = true
 					part.CanCollide = true
 				end
 			end
-				local slotYAngle
+
+			local slotYAngle
 			local current = slotData.Model.Parent
 			for _ = 1, 6 do
 				if not current or current == workspace then break end
@@ -139,22 +173,22 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 			clone:PivotTo(CFrame.new(slotCF.Position.X, finalPivotY, slotCF.Position.Z) * CFrame.Angles(0, slotYAngle, 0) * originalRotation)
 			clone.Parent = slotData.Model
 			slotData.GeneratorPart = clone
-			tagGeneratorVisual(clone, rarity, revenuePerSecond)
+			tagGeneratorVisual(clone, rarity, variantToUse, revenuePerSecond)
 			return clone
 		end
 	end
 
 	-- Fallback : Part colorée
 	local part = Instance.new("Part")
-	part.Name      = modelName or ("Generator_" .. rarity)
-	part.Size      = Vector3.new(4, 3, 4)
-	part.CFrame    = targetCF
-	part.Anchored  = true
+	part.Name       = modelName or ("Generator_" .. rarity)
+	part.Size       = Vector3.new(4, 3, 4)
+	part.CFrame     = CFrame.new(slotCF.Position + Vector3.new(0, 2, 0))
+	part.Anchored   = true
 	part.CanCollide = true
-	part.Color     = RARITY_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
-	part.Parent    = slotData.Model
+	part.Color      = RARITY_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
+	part.Parent     = slotData.Model
 	slotData.GeneratorPart = part
-	tagGeneratorVisual(part, rarity, revenuePerSecond)
+	tagGeneratorVisual(part, rarity, variantToUse, revenuePerSecond)
 	return part
 end
 
@@ -175,7 +209,6 @@ function GeneratorPlacementService.InitializePlotSlots(userId)
 	for _, slotModel in ipairs(slotsFolder:GetChildren()) do
 		if not slotModel:IsA("Model") or not slotModel.PrimaryPart then continue end
 
-		-- Supprimer les ProximityPrompts existants et en créer un propre
 		for _, existing in ipairs(slotModel:GetDescendants()) do
 			if existing:IsA("ProximityPrompt") then existing:Destroy() end
 		end
@@ -221,27 +254,33 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 	local playerData = _PlayerDataService.GetPlayerData(userId)
 	if not playerData then return end
 
-	-- Vérifier si un brainrot Tool est ACTIVEMENT ÉQUIPÉ en main (pas juste dans le backpack)
-	local brainrotTool, brainrotName, modelName, brainrotRarity, revenue
+	-- Vérifier si un brainrot Tool est ACTIVEMENT ÉQUIPÉ en main
+	local brainrotTool, brainrotName, modelName, brainrotRarity, revenue, variantName
 	if player.Character then
 		local equipped = player.Character:FindFirstChildOfClass("Tool")
 		if equipped and equipped.Name:match("^Brainrot_") then
-			brainrotTool = equipped
-			brainrotName     = equipped:GetAttribute("BrainrotName")
-			modelName        = equipped:GetAttribute("ModelName") or ""
-			brainrotRarity   = equipped:GetAttribute("Rarity")
-			revenue          = equipped:GetAttribute("RevenuePerSecond")
+			brainrotTool  = equipped
+			brainrotName  = equipped:GetAttribute("BrainrotName")
+			modelName     = equipped:GetAttribute("ModelName") or ""
+			brainrotRarity = equipped:GetAttribute("Rarity")
+			revenue       = equipped:GetAttribute("RevenuePerSecond")
+			variantName   = equipped:GetAttribute("BrainrotVariant") or "Normal"
 		end
 	end
 
 	local brainrot, rarity, isDirectBrainrot
 
 	if brainrotTool then
-		brainrot = { Name = brainrotName, ModelName = modelName ~= "" and modelName or nil, RevenuePerSecond = revenue }
-		rarity   = brainrotRarity
+		-- Brainrot déjà existant reposé → variante conservée, revenue conservé
+		brainrot = {
+			Name             = brainrotName,
+			ModelName        = modelName ~= "" and modelName or nil,
+			RevenuePerSecond = revenue,
+		}
+		rarity           = brainrotRarity
 		isDirectBrainrot = true
 	else
-		-- Sinon : oeuf → roll aléatoire dans la pool
+		-- Oeuf → roll aléatoire dans la pool + tirage de variante
 		local _, eggRarity = PlacementService.GetEquippedEggInfo(player)
 		if not eggRarity then return end
 		rarity = eggRarity
@@ -252,30 +291,43 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 			warn("Pas de Pool pour la rareté:", rarity)
 			return
 		end
+
 		brainrot = rollBrainrot(rarityConfig.Pool)
+
+		-- Tirage de variante
+		local multiplier
+		variantName, multiplier = rollVariantName()
+		revenue = math.floor((brainrot.RevenuePerSecond or 0) * multiplier)
+		brainrot = {
+			Name             = brainrot.Name,
+			ModelName        = brainrot.ModelName,
+			RevenuePerSecond = revenue,
+		}
 	end
 
 	-- Marquer le slot comme occupé
 	slotData.Occupied = true
 
 	-- Visuel
-	createGeneratorVisual(slotData, rarity, brainrot.ModelName, brainrot.RevenuePerSecond)
+	createGeneratorVisual(slotData, rarity, brainrot.ModelName, brainrot.RevenuePerSecond, variantName)
 
 	-- Retirer l'item utilisé
 	if isDirectBrainrot then
-		PlacementService.RemoveBrainrotTool(player, brainrot.Name)
-		_PlayerDataService.RemoveBrainrot(userId, brainrot.Name)
+		PlacementService.RemoveBrainrotTool(player, brainrotName)
+		_PlayerDataService.RemoveBrainrot(userId, brainrotName)
 	else
 		_PlayerDataService.RemoveGenerator(userId, rarity)
 		PlacementService.RemoveEggTool(player, rarity)
 	end
 
-	-- Démarrer la génération d'argent (synchronisée)
+	-- Démarrer la génération d'argent
 	_GeneratorService.StartGeneratorLoop(userId, slotKey, brainrot.RevenuePerSecond, 1)
 
-	-- Récompense EXP uniquement à la première apparition (oeuf), pas si brainrot reposé
+	-- EXP à la découverte du brainrot (oeuf seulement, pas si brainrot reposé)
 	if not isDirectBrainrot then
-		LevelService.AddExp(userId, LevelConfig.ExpRewards.GearSlotFilled)
+		local tierExp     = LevelConfig.ExpRewards.BrainrotDiscovered.Tiers[rarity] or 0
+		local variantMult = LevelConfig.ExpRewards.BrainrotDiscovered.VariantMultiplier[variantName] or 1
+		LevelService.AddExp(userId, tierExp * variantMult)
 	end
 
 	-- Switch ProximityPrompt → mode "Récupérer"
@@ -284,10 +336,10 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		slotData.PlacementConnection = nil
 	end
 	local prompt = slotData.Prompt
-	prompt.ActionText          = "Récupérer"
-	prompt.ObjectText          = brainrot.Name
-	prompt.HoldDuration        = 0
-	prompt.Enabled             = true
+	prompt.ActionText   = "Récupérer"
+	prompt.ObjectText   = brainrot.Name .. (variantName ~= "Normal" and (" · " .. variantName) or "")
+	prompt.HoldDuration = 0
+	prompt.Enabled      = true
 
 	local capturedSlotName = slotModel.Name
 	slotData.PickupConnection = prompt.Triggered:Connect(function(trigPlayer)
@@ -295,16 +347,16 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
 	end)
 
-	-- Sauvegarder le placement (avec le brainrot exact tiré)
+	-- Sauvegarder le placement
 	table.insert(playerData.placedGenerators, {
 		SlotName         = slotModel.Name,
 		Rarity           = rarity,
 		BrainrotName     = brainrot.Name,
 		ModelName        = brainrot.ModelName,
+		Variant          = variantName,
 		RevenuePerSecond = brainrot.RevenuePerSecond,
 	})
 
-	_PlayerDataService.SavePlayer(userId)
 	notifyTotalRevenue(userId)
 end
 
@@ -323,10 +375,11 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 
 		slotData.Occupied = true
 
-		-- Recréer le visuel avec le brainrot sauvegardé
-		createGeneratorVisual(slotData, placedData.Rarity, placedData.ModelName, placedData.RevenuePerSecond)
+		-- Recréer le visuel avec le brainrot et la variante sauvegardés
+		local variant = placedData.Variant or "Normal"
+		createGeneratorVisual(slotData, placedData.Rarity, placedData.ModelName, placedData.RevenuePerSecond, variant)
 
-		-- Relancer la génération d'argent (revenue sauvegardé, pas de re-roll)
+		-- Relancer la génération d'argent
 		_GeneratorService.StartGeneratorLoop(userId, slotKey, placedData.RevenuePerSecond, 1)
 
 		-- Switch ProximityPrompt → mode "Récupérer"
@@ -335,10 +388,10 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 			slotData.PlacementConnection = nil
 		end
 		local prompt = slotData.Prompt
-		prompt.ActionText = "Récupérer"
-		prompt.ObjectText = placedData.BrainrotName or ""
+		prompt.ActionText   = "Récupérer"
+		prompt.ObjectText   = (placedData.BrainrotName or "") .. (variant ~= "Normal" and (" · " .. variant) or "")
 		prompt.HoldDuration = 0
-		prompt.Enabled = true
+		prompt.Enabled      = true
 
 		local capturedSlotName = placedData.SlotName
 		local capturedRarity   = placedData.Rarity
@@ -350,7 +403,7 @@ function GeneratorPlacementService.RestorePlacedGenerators(userId)
 	notifyTotalRevenue(userId)
 end
 
--- ── Récupère un générateur posé et remet l'oeuf dans l'inventaire ────────────
+-- ── Récupère un générateur posé et remet le brainrot dans l'inventaire ───────
 function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	local slotKey  = userId .. "_" .. slotName
 	local slotData = _generatorSlots[slotKey]
@@ -382,11 +435,12 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	slotData.Occupied = false
 
 	-- Récupérer les données du brainrot avant de retirer
-	local placed = playerData.placedGenerators[placedIndex]
-	local brainrotName     = placed.BrainrotName
-	local brainrotModel    = placed.ModelName
-	local brainrotRarity   = placed.Rarity
-	local brainrotRevenue  = placed.RevenuePerSecond
+	local placed        = playerData.placedGenerators[placedIndex]
+	local brainrotName  = placed.BrainrotName
+	local brainrotModel = placed.ModelName
+	local brainrotRarity = placed.Rarity
+	local brainrotRevenue = placed.RevenuePerSecond
+	local brainrotVariant = placed.Variant or "Normal"
 
 	-- Retirer de placedGenerators
 	table.remove(playerData.placedGenerators, placedIndex)
@@ -398,23 +452,22 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	end
 
 	local prompt = slotData.Prompt
-	prompt.ActionText = "Poser l'oeuf"
-	prompt.ObjectText = slotData.Model.Name
+	prompt.ActionText   = "Poser l'oeuf"
+	prompt.ObjectText   = slotData.Model.Name
 	prompt.HoldDuration = 0
-	prompt.Enabled = true
+	prompt.Enabled      = true
 
 	slotData.PlacementConnection = prompt.Triggered:Connect(function(trigPlayer)
 		if trigPlayer.UserId ~= userId then return end
 		GeneratorPlacementService.OnSlotTriggered(trigPlayer, slotData.Model)
 	end)
 
-	-- Redonner le brainrot spécifique comme Tool (pas un oeuf générique)
+	-- Redonner le brainrot spécifique comme Tool (variante conservée)
 	if player then
-		PlacementService.GiveBrainrotTool(player, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
+		PlacementService.GiveBrainrotTool(player, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue, brainrotVariant)
 	end
 	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
 
-	_PlayerDataService.SavePlayer(userId)
 	notifyTotalRevenue(userId)
 end
 

@@ -30,33 +30,33 @@ end
 -- ─── Récompenses d'EXP par action ───────────────────────────────────────────
 LevelConfig.ExpRewards = {
 
-	BrainrotGenerated = {
-		Common    = 5,
-		Uncommon  = 15,
-		Rare      = 35,
-		Epic      = 75,
-		Legendary = 150,
+	-- EXP gagné à la découverte d'un brainrot (pose de l'oeuf sur le socle)
+	-- Calculé : BrainrotDiscovered.Tiers[rarity] * BrainrotDiscovered.VariantMultiplier[variant]
+	BrainrotDiscovered = {
+
+		-- EXP de base par tier (variante Normal)
+		Tiers = {
+			Common      =    50,
+			Uncommon    =   150,
+			Rare        =   400,
+			Epic        = 1_000,
+			Legendary   = 2_500,
+			Mythic      = 6_000,
+			BrainrotGod = 15_000,
+			Secret      = 10_000,
+			OG          = 20_000,
+		},
+
+		-- Multiplicateur selon la variante
+		VariantMultiplier = {
+			Normal  = 1,
+			Gold    = 2,
+			Diamond = 5,
+		},
 	},
 
-	BrainrotSold = {
-		Common    = 2,
-		Uncommon  = 8,
-		Rare      = 18,
-		Epic      = 40,
-		Legendary = 80,
-	},
-
-	GearSlotFilled = 25,
-	SpawnerPlaced  = 10,
-	QuotaCompleted = 50,
-
-	SpawnerPurchased = {
-		Common    = 3,
-		Uncommon  = 8,
-		Rare      = 20,
-		Epic      = 50,
-		Legendary = 100,
-	},
+	-- Poser un spawner sur un slot
+	SpawnerPlaced = 10,
 }
 
 return LevelConfig
