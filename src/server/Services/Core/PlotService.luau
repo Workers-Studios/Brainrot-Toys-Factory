@@ -14,11 +14,15 @@
 local PlotService = {}
 
 -- Private variables
-local _plots = {}  -- [userId] = {plot = Model, slotNumber = number}
-local _plotPositions = {}  -- Table of Vector3 positions
+local _plots = {}        -- [userId] = {plot = Model, slotNumber = number}
+local _plotPositions = {} -- Table of Vector3 positions
+local _mapCenter = Vector3.new(0, 0, 0)  -- Centre calculé depuis les marqueurs
 local _activePlots = 0
 local MAX_PLOTS = 8
 local _availableSlots = {}  -- Table of available slot numbers
+
+-- Offset Y appliqué au-dessus du repère de position (ajuste selon ton template)
+local PLOT_SPAWN_Y_OFFSET = 5
 
 -- Services
 local ServerStorage = game:GetService("ServerStorage")
@@ -28,21 +32,28 @@ local Workspace = game:GetService("Workspace")
 function PlotService.Init()
 	local plotsFolder = Workspace:FindFirstChild("Plots")
 	if not plotsFolder then
-		error("Plots folder not found in Workspace!")
+		warn("❌ CONFIGURATION MANQUANTE : Crée un dossier nommé 'Plots' dans Workspace contenant 8 Models (un par emplacement de slot)")
+		return
 	end
 
-	-- ⭐ Stocker nom + position ensemble
+	-- ⭐ Stocker nom + position ensemble (supporte Models ET BaseParts)
 	local plotData = {}
 
 	for _, child in ipairs(plotsFolder:GetChildren()) do
+		local positionPart = nil
+
 		if child:IsA("Model") then
-			local positionPart = child:FindFirstChildWhichIsA("BasePart")
-			if positionPart then
-				table.insert(plotData, {
-					name = child.Name,
-					position = positionPart.Position
-				})
-			end
+			-- Priorité au PrimaryPart, sinon premier BasePart trouvé
+			positionPart = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
+		elseif child:IsA("BasePart") then
+			positionPart = child
+		end
+
+		if positionPart then
+			table.insert(plotData, {
+				name = child.Name,
+				position = positionPart.Position
+			})
 		end
 	end
 
@@ -56,6 +67,26 @@ function PlotService.Init()
 	for i, data in ipairs(plotData) do
 		table.insert(_plotPositions, data.position)
 		print("  Slot", i, "=", data.name, "at", data.position)
+	end
+
+	-- Récupérer le centre de la map depuis le modèle "Marchand"
+	local marchand = Workspace:FindFirstChild("Maps")
+		and Workspace.Maps:FindFirstChild("Hub Centrale")
+		and Workspace.Maps["Hub Centrale"]:FindFirstChild("Decoration")
+		and Workspace.Maps["Hub Centrale"].Decoration:FindFirstChild("Marchand")
+
+	if marchand then
+		local marchandPart = marchand:IsA("BasePart") and marchand
+			or (marchand.PrimaryPart)
+			or marchand:FindFirstChildWhichIsA("BasePart")
+		if marchandPart then
+			_mapCenter = marchandPart.Position
+			print("📍 Centre de la map → Marchand :", _mapCenter)
+		else
+			warn("❌ Marchand trouvé mais sans BasePart — vérifie son PrimaryPart")
+		end
+	else
+		warn("❌ Modèle 'Marchand' introuvable dans Workspace.Maps.Hub Centrale.Decoration — centre par défaut utilisé")
 	end
 
 	-- Initialize available slots
@@ -78,14 +109,19 @@ function PlotService.CreatePlot(userId)
 
 	-- Check if slots available
 	if #_availableSlots == 0 then
-		warn("Server full, cannot create plot for", userId)
+		if #_plotPositions == 0 then
+			warn("❌ Aucun emplacement de slot trouvé — crée le dossier Workspace.Plots avec 8 Models")
+		else
+			warn("❌ Serveur complet (", MAX_PLOTS, "/", MAX_PLOTS, "joueurs)")
+		end
 		return nil
 	end
 
 	-- Get template
 	local template = ServerStorage:FindFirstChild("PlayerPlotTemplate")
 	if not template then
-		error("PlayerPlotTemplate not found in ServerStorage!")
+		warn("❌ PlayerPlotTemplate not found in ServerStorage! Vérifie que le modèle est bien dans ServerStorage et nommé 'PlayerPlotTemplate'")
+		return nil
 	end
 
 	-- Clone template
@@ -102,25 +138,20 @@ function PlotService.CreatePlot(userId)
 	-- Get position for this slot
 	local position = _plotPositions[slotNumber]
 	if not position then
-		error("No plot position available for slot", slotNumber)
+		warn("❌ No plot position found for slot", slotNumber, "- vérifie que Workspace.Plots contient bien 8 emplacements")
+		return nil
 	end
 
-	-- Rotation by slot
-	local rotations = {
-		180, -- slot7
-		180, -- slot8
-		90,  -- slot1
-		270, -- slot5
-		90,  -- slot2
-		270, -- slot6
-		0,   -- slot3
-		0    -- slot4
-	}
+	-- Calculer la direction vers le centre (sur le plan XZ uniquement)
+	local spawnPosition = position + Vector3.new(0, PLOT_SPAWN_Y_OFFSET, 0)
+	local centerAtSameHeight = Vector3.new(_mapCenter.X, spawnPosition.Y, _mapCenter.Z)
 
-	local rotation = rotations[slotNumber] or 0
-
-	-- Create CFrame with position AND rotation
-	local cframe = CFrame.new(position) * CFrame.Angles(0, math.rad(rotation), 0)
+	-- Extraire l'angle Y exact depuis CFrame.lookAt, puis snapper au multiple de 90° le plus proche
+	-- +180° car le front du template est sur +Z (lookAt vise avec -Z)
+	local lookCFrame = CFrame.lookAt(spawnPosition, centerAtSameHeight)
+	local _, rawAngleY, _ = lookCFrame:ToEulerAnglesYXZ()
+	local snappedAngle = (math.round(math.deg(rawAngleY) / 90) * 90 + 90) % 360
+	local cframe = CFrame.new(spawnPosition) * CFrame.Angles(0, math.rad(snappedAngle), 0)
 
 	-- Position plot
 	plot:PivotTo(cframe)
@@ -135,17 +166,6 @@ function PlotService.CreatePlot(userId)
 
 	-- Parent plot to workspace
 	plot.Parent = playerPlotsFolder
-	
-	local spawnCheck = plot:FindFirstChild("SpawnLocation", true)
-	if spawnCheck then
-		print("✅ SpawnLocation found in plot at", spawnCheck.Position)
-	else
-		warn("❌ SpawnLocation NOT FOUND in plot!")
-		print("Plot children:")
-		for _, child in ipairs(plot:GetChildren()) do
-			print("  -", child.Name, child.ClassName)
-		end
-	end
 
 	-- ⭐ Track plot WITH slot number
 	_plots[userId] = {
@@ -154,8 +174,8 @@ function PlotService.CreatePlot(userId)
 	}
 	_activePlots += 1
 
-	print("✅ Plot created for", userId, "at RANDOM slot", slotNumber, "with rotation", rotation, "°")
-	print("   Remaining available slots:", #_availableSlots)
+	print("✅ Plot créé pour", userId, "au slot", slotNumber, "→ rotation snappée :", snappedAngle, "°")
+	print("   Slots restants :", #_availableSlots)
 
 	return plot
 end

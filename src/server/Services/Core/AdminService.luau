@@ -10,8 +10,12 @@
 
 local AdminService = {}
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local _PlayerDataService = nil
-local _MoneyService = nil
+local _MoneyService      = nil
+local _LevelService      = nil
+local _PrestigeService   = nil
 
 -- Users Admin ID
 local ADMIN_USER_IDS = {
@@ -33,32 +37,21 @@ end
 -- Initializes admin service and creates RemoteEvents
 -- @param PlayerDataService: service
 -- @param MoneyService: service
-function AdminService.Init(PlayerDataService, MoneyService)
+function AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService)
 	_PlayerDataService = PlayerDataService
-	_MoneyService = MoneyService
+	_MoneyService      = MoneyService
+	_LevelService      = LevelService
+	_PrestigeService   = PrestigeService
 
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local remoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
+	local adminFolder = ReplicatedStorage.RemoteInterface:WaitForChild("Admin")
 
-	-- Create Admin folder in RemoteInterface
-	local adminFolder = Instance.new("Folder")
-	adminFolder.Name = "Admin"
-	adminFolder.Parent = remoteInterface
-
-	-- Create RemoteFunction to check if player is admin
-	local isAdminRemote = Instance.new("RemoteFunction")
-	isAdminRemote.Name = "IsAdmin"
-	isAdminRemote.Parent = adminFolder
-
+	-- Connecter les handlers sur les remotes pré-créées par ServerInit
+	local isAdminRemote = adminFolder:WaitForChild("IsAdmin")
 	isAdminRemote.OnServerInvoke = function(player)
 		return isAdmin(player.UserId)
 	end
 
-	-- Create RemoteEvent for admin commands
-	local executeCommandRemote = Instance.new("RemoteEvent")
-	executeCommandRemote.Name = "ExecuteCommand"
-	executeCommandRemote.Parent = adminFolder
-
+	local executeCommandRemote = adminFolder:WaitForChild("ExecuteCommand")
 	executeCommandRemote.OnServerEvent:Connect(function(player, commandType, targetName, value)
 		AdminService.ExecuteCommand(player, commandType, targetName, value)
 	end)
@@ -114,7 +107,7 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 
 	elseif commandType == "GiveSpawner" then
 		local rarity = value
-		local validRarities = {"Common", "Rare", "Epic", "Legendary"}
+		local validRarities = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
 
 		if not table.find(validRarities, rarity) then
 			warn("Admin: Invalid rarity")
@@ -126,6 +119,75 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 			playerData:AddToInventory(rarity)
 			_PlayerDataService.SavePlayer(target.UserId)
 			print(string.format("✅ Admin %s gave %s spawner to %s", admin.Name, rarity, targetName))
+		end
+
+	elseif commandType == "AddExp" then
+		local amount = tonumber(value)
+		if not amount or amount <= 0 then
+			warn("Admin: Invalid exp amount")
+			return
+		end
+		if not _LevelService then warn("Admin: LevelService unavailable") return end
+		_LevelService.AddExp(target.UserId, amount)
+		print(string.format("✅ Admin %s gave %d EXP to %s", admin.Name, amount, targetName))
+
+	elseif commandType == "SetLevel" then
+		local level = tonumber(value)
+		if not level or level < 1 then
+			warn("Admin: Invalid level")
+			return
+		end
+		if not _LevelService then warn("Admin: LevelService unavailable") return end
+		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
+		if playerData then
+			level = math.floor(level)
+			local LevelConfig = require(ReplicatedStorage.Shared.LevelConfig)
+			local maxLevel = playerData.isMasterPrestige and math.huge or LevelConfig.MaxLevel
+			level = math.clamp(level, 1, maxLevel)
+			playerData.level = level
+			-- Set EXP to the exact threshold for this level so AddExp works correctly
+			playerData.exp = 0
+			_PlayerDataService.SavePlayer(target.UserId)
+			-- Notify client via LevelService
+			_LevelService.SendInitialData(target.UserId)
+			print(string.format("✅ Admin %s set %s to level %d", admin.Name, targetName, level))
+		end
+
+	elseif commandType == "SetPrestige" then
+		local prestigeLevel = tonumber(value)
+		if not prestigeLevel or prestigeLevel < 0 then
+			warn("Admin: Invalid prestige level")
+			return
+		end
+		local PrestigeConfig = require(ReplicatedStorage.Shared.PrestigeConfig)
+		prestigeLevel = math.floor(math.min(prestigeLevel, PrestigeConfig.MaxPrestige))
+		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
+		if playerData then
+			playerData.prestigeLevel = prestigeLevel
+			playerData.isMasterPrestige = false
+			_PlayerDataService.SavePlayer(target.UserId)
+			if _PrestigeService then
+				_PrestigeService.SendInitialData(target.UserId)
+			end
+			print(string.format("✅ Admin %s set %s prestige to %d", admin.Name, targetName, prestigeLevel))
+		end
+
+	elseif commandType == "GiveBrainrot" then
+		local rarity = value
+		local validRarities = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
+		if not table.find(validRarities, rarity) then
+			warn("Admin: Invalid rarity for brainrot")
+			return
+		end
+		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
+		if playerData then
+			-- Add a placeholder brainrot entry to brainrotInventory
+			table.insert(playerData.brainrotInventory, {
+				Name   = "Admin_" .. rarity,
+				Rarity = rarity,
+			})
+			_PlayerDataService.SavePlayer(target.UserId)
+			print(string.format("✅ Admin %s gave %s brainrot to %s", admin.Name, rarity, targetName))
 		end
 	end
 end

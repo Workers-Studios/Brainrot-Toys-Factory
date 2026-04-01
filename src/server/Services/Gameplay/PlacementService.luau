@@ -15,7 +15,13 @@
 
 local PlacementService = {}
 
-local PlotService = require(script.Parent.Parent.Core.PlotService)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlotService       = require(script.Parent.Parent.Core.PlotService)
+local ServerStorage     = game:GetService("ServerStorage")
+local LevelService      = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
+
+local VALID_RARITIES = {Common = true, Uncommon = true, Rare = true, Epic = true, Legendary = true}
 
 local _PlayerDataService = nil
 local _SpawnerService = nil
@@ -73,67 +79,134 @@ function PlacementService.InitializePlotSlots(userId)
 			continue
 		end
 
-		-- Connect prompt (ownership check)
-		proximityPrompt.Triggered:Connect(function(player)
-			if player.UserId == userId then
-				PlacementService.OnSlotTriggered(player, slot)
-			end
-		end)
-
 		-- Create unique slot key
 		local slotKey = userId .. "_" .. slot.Name
 
 		-- Store slot data
 		_slots[slotKey] = {
-			Model = slot,
-			Part = slotPart,
-			ProximityPrompt = proximityPrompt,
-			Occupied = false,
-			SpawnerPart = nil,
-			UserId = userId
+			Model             = slot,
+			Part              = slotPart,
+			ProximityPrompt   = proximityPrompt,
+			PlacementConnection = nil,
+			PickupConnection    = nil,
+			Occupied          = false,
+			SpawnerPart       = nil,
+			UserId            = userId
 		}
+
+		-- Connect prompt placement (stocké pour pouvoir déconnecter)
+		_slots[slotKey].PlacementConnection = proximityPrompt.Triggered:Connect(function(player)
+			if player.UserId == userId then
+				PlacementService.OnSlotTriggered(player, slot)
+			end
+		end)
 	end
 
 	print("Initialized", #slotsFolder:GetChildren(), "spawner slots for plot", userId)
 end
 
+-- Retourne la rareté du tool spawner équipé (en main ou dans le backpack)
+function PlacementService.GetEquippedSpawnerRarity(player)
+	local function isSpawnerTool(tool)
+		if not tool:IsA("Tool") then return false end
+		if tool:GetAttribute("SpawnerRarity") then return true end
+		return VALID_RARITIES[tool.Name] == true
+	end
+	local function getRarity(tool)
+		return tool:GetAttribute("SpawnerRarity") or tool.Name
+	end
+
+	if player.Character then
+		local tool = player.Character:FindFirstChildOfClass("Tool")
+		if tool and isSpawnerTool(tool) then return getRarity(tool) end
+	end
+	for _, tool in ipairs(player.Backpack:GetChildren()) do
+		if isSpawnerTool(tool) then return getRarity(tool) end
+	end
+	return nil
+end
+
+local SPAWNER_RARITY_COLORS = {
+	Common    = Color3.fromRGB(180, 180, 180),
+	Uncommon  = Color3.fromRGB(30,  180, 30),
+	Rare      = Color3.fromRGB(0,   100, 255),
+	Epic      = Color3.fromRGB(128, 0,   128),
+	Legendary = Color3.fromRGB(255, 215, 0),
+}
+
+-- Donne un Tool spawner au backpack du joueur (template Studio ou création par code)
+function PlacementService.GiveSpawnerTool(player, rarity)
+	-- Essayer le template Studio en priorité
+	local spawnerTools = ServerStorage:FindFirstChild("SpawnerTools")
+	local toolTemplate = spawnerTools and spawnerTools:FindFirstChild(rarity)
+	if toolTemplate then
+		local tool = toolTemplate:Clone()
+		tool.Name   = rarity
+		tool.Parent = player.Backpack
+		return
+	end
+
+	-- Fallback : créer le Tool entièrement par code
+	local tool = Instance.new("Tool")
+	tool.Name        = rarity
+	tool.ToolTip     = rarity .. " Spawner"
+	tool.RequiresHandle = true
+	tool:SetAttribute("SpawnerRarity", rarity)
+
+	local handle = Instance.new("Part")
+	handle.Name     = "Handle"
+	handle.Size     = Vector3.new(1, 1, 1)
+	handle.Color    = SPAWNER_RARITY_COLORS[rarity] or Color3.new(1, 1, 1)
+	handle.Material = Enum.Material.SmoothPlastic
+	handle.Parent   = tool
+
+	tool.Parent = player.Backpack
+end
+
+-- Supprime le tool spawner de la main ou du backpack du joueur
+function PlacementService.RemoveSpawnerTool(player, rarity)
+	if player.Character then
+		local tool = player.Character:FindFirstChild(rarity)
+		if tool and tool:IsA("Tool") then
+			tool:Destroy()
+			return
+		end
+	end
+	local tool = player.Backpack:FindFirstChild(rarity)
+	if tool and tool:IsA("Tool") then
+		tool:Destroy()
+	end
+end
+
 -- Handles player interaction with spawner slot
--- @param player: Player - Player who triggered the slot
--- @param slotModel: Model - Slot model triggered
 function PlacementService.OnSlotTriggered(player, slotModel)
 	local userId = player.UserId
-	local slotKey = userId .. "_" .. slotModel.Name  -- ⭐ Clé unique
 
-	-- Validate slot is available
 	if not PlacementService.IsSlotFree(userId, slotModel.Name) then
-		warn("Slot already occupied")
-		return
-	end
-
-	local playerData = _PlayerDataService.GetPlayerData(userId)
-	if not playerData then
-		warn("PlayerData not found for", userId)
-		return
-	end
-
-	-- Get first available spawner from inventory
-	local rarity = PlacementService.GetFirstAvailableSpawner(playerData)
-
-	if not rarity then
-		warn("No spawner available in inventory")
 		if _OnNotification then
-			_OnNotification:FireClient(game.Players:GetPlayerByUserId(userId), "No spawner available", "ERROR")
+			_OnNotification:FireClient(player, "Ce slot est déjà occupé !", "ERROR")
 		end
 		return
 	end
 
-	-- Attempt placement
-	local success = PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotModel.Name)
+	-- Lire la rareté depuis le tool équipé
+	local rarity = PlacementService.GetEquippedSpawnerRarity(player)
+	if not rarity then
+		if _OnNotification then
+			_OnNotification:FireClient(player, "Équipe un spawner d'abord !", "ERROR")
+		end
+		return
+	end
 
+	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not playerData or not playerData:HasInInventory(rarity) then
+		warn("Player doesn't have spawner", rarity)
+		return
+	end
+
+	local success = PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotModel.Name, player)
 	if success then
-		print("Spawner placed successfully:", rarity, "on", slotModel.Name)
-	else
-		warn("Spawner placement failed")
+		print("Spawner placed:", rarity, "on", slotModel.Name)
 	end
 end
 
@@ -142,50 +215,140 @@ end
 -- @param rarity: string - Spawner rarity
 -- @param slotName: string - Target slot name
 -- @return boolean - true if placed successfully
-function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName)
+function PlacementService.PlaceSpawnerOnSlot(userId, rarity, slotName, player)
 	local slotKey = userId .. "_" .. slotName
 	local playerData = _PlayerDataService.GetPlayerData(userId)
 
-	-- Validate player has spawner in inventory
 	if not playerData:HasInInventory(rarity) then
 		warn("Player doesn't have spawner", rarity)
 		return false
 	end
 
-	-- Mark slot as occupied
 	_slots[slotKey].Occupied = true
 
-	-- ⭐ Create visual spawner avec ROTATION DU SLOT
 	local slotPart = _slots[slotKey].Part
-	local spawnerPart = PlacementService.CreateSpawnerPart(rarity, slotPart)  -- ⭐ Passer le slot
-
-	-- Store references
+	local spawnerPart = PlacementService.CreateSpawnerPart(rarity, slotPart)
 	_slots[slotKey].SpawnerPart = spawnerPart
-
-	-- Update slot visual
-	_slots[slotKey].Part.Color = Color3.fromRGB(255, 0, 0)
-	_slots[slotKey].Part.ProximityPrompt.Enabled = false
-
-	-- Remove from inventory
-	playerData:RemoveFromInventory(rarity)
-
-	-- ⭐ Start spawner avec le spawnerPart
-	task.spawn(function()
-		_SpawnerService.StartSpawner(userId, rarity, spawnerPart)
-	end)
-
-	-- Save placement to DataStore
-	if playerData then
-		table.insert(playerData.placedSpawners, {
-			SlotName = slotName,
-			Rarity = rarity,
-		})
-
-		_PlayerDataService.SavePlayer(userId)
-		print("Spawner saved:", slotName, rarity)
+	-- Rendre tout le slot invisible (Part simple ou Model avec plusieurs Parts)
+	local slotModel = _slots[slotKey].Model
+	if slotModel:IsA("Model") then
+		for _, part in ipairs(slotModel:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Transparency = 1
+			end
+		end
+	else
+		slotModel.Transparency = 1
+	end
+	-- Déconnecter la connexion placement et passer en mode "Récupérer"
+	if _slots[slotKey].PlacementConnection then
+		_slots[slotKey].PlacementConnection:Disconnect()
+		_slots[slotKey].PlacementConnection = nil
 	end
 
+	local pp = _slots[slotKey].ProximityPrompt
+	pp.ActionText          = "Récupérer"
+	pp.ObjectText          = rarity .. " Spawner"
+	pp.HoldDuration        = 0
+	pp.MaxActivationDistance = 10
+	pp.RequiresLineOfSight = false
+	pp.Enabled             = true
+
+	_slots[slotKey].PickupConnection = pp.Triggered:Connect(function(triggeringPlayer)
+		if triggeringPlayer.UserId ~= userId then return end
+		PlacementService.PickupSpawner(userId, slotName, triggeringPlayer)
+	end)
+
+	playerData:RemoveFromInventory(rarity)
+
+	-- Récompense EXP pour le placement
+	LevelService.AddExp(userId, LevelConfig.ExpRewards.SpawnerPlaced)
+
+	-- Supprimer le tool de la main du joueur
+	if player then
+		PlacementService.RemoveSpawnerTool(player, rarity)
+	end
+
+	task.spawn(function()
+		_SpawnerService.StartSpawner(userId, rarity, spawnerPart, slotName)
+	end)
+
+	table.insert(playerData.placedSpawners, {SlotName = slotName, Rarity = rarity})
+
 	return true
+end
+
+-- Récupère un spawner placé et le remet dans l'inventaire du joueur
+function PlacementService.PickupSpawner(userId, slotName, player)
+	local slotKey = userId .. "_" .. slotName
+	local slotData = _slots[slotKey]
+	if not slotData or not slotData.Occupied then return end
+
+	local playerData = _PlayerDataService.GetPlayerData(userId)
+	if not playerData then return end
+
+	-- Trouver la rareté dans placedSpawners
+	local rarity = nil
+	for i, placed in ipairs(playerData.placedSpawners) do
+		if placed.SlotName == slotName then
+			rarity = placed.Rarity
+			table.remove(playerData.placedSpawners, i)
+			break
+		end
+	end
+	if not rarity then return end
+
+	-- Stopper le spawner
+	_SpawnerService.StopSpawner(userId, slotName)
+
+	-- Détruire le visuel du spawner
+	local spawnerPart = slotData.SpawnerPart
+	if spawnerPart then
+		local spawnerModel = spawnerPart.Parent
+		if spawnerModel and spawnerModel:IsA("Model") then
+			spawnerModel:Destroy()
+		else
+			spawnerPart:Destroy()
+		end
+	end
+	slotData.SpawnerPart = nil
+	slotData.Occupied    = false
+
+	-- Restaurer la visibilité du slot
+	local slotModel = slotData.Model
+	if slotModel:IsA("Model") then
+		for _, part in ipairs(slotModel:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.Transparency = 0
+			end
+		end
+	else
+		slotModel.Transparency = 0
+	end
+
+	-- Déconnecter pickup et reconnecter placement
+	if slotData.PickupConnection then
+		slotData.PickupConnection:Disconnect()
+		slotData.PickupConnection = nil
+	end
+
+	local pp = slotData.ProximityPrompt
+	pp.ActionText   = "Placer"
+	pp.ObjectText   = ""
+	pp.HoldDuration = 0
+	pp.Enabled      = true
+
+	slotData.PlacementConnection = pp.Triggered:Connect(function(player)
+		if player.UserId == userId then
+			PlacementService.OnSlotTriggered(player, slotData.Model)
+		end
+	end)
+
+	-- Remettre le spawner dans l'inventaire + redonner le tool
+	playerData:AddToInventory(rarity)
+	if player then
+		PlacementService.GiveSpawnerTool(player, rarity)
+	end
 end
 
 -- Checks if a slot is available for placement
@@ -201,35 +364,242 @@ end
 -- @param rarity: string - Spawner rarity
 -- @param slotPart: BasePart - The slot part (for position AND rotation)
 -- @return Part - Created spawner part
-function PlacementService.CreateSpawnerPart(rarity, slotPart)  -- ⭐ Passer le slot, pas la position
-	local part = Instance.new("Part")
-	part.Name = "Spawner_" .. rarity
-	part.Size = Vector3.new(7, 1, 7)
-	part.Anchored = true
+function PlacementService.CreateSpawnerPart(rarity, slotPart)
+	local targetCFrame = slotPart.CFrame
 
-	-- ⭐ Hériter EXACTEMENT du CFrame du slot (position + rotation)
-	part.CFrame = slotPart.CFrame * CFrame.new(0, 2, 0)  -- 2 studs au-dessus du slot
+	-- Cloner le modèle visuel depuis le Tool dans ServerStorage
+	local toolTemplate = ServerStorage:FindFirstChild("SpawnerTools") and
+		ServerStorage.SpawnerTools:FindFirstChild(rarity)
 
-	-- Color by rarity
-	if rarity == "Common" then
-		part.Color = Color3.fromRGB(135, 135, 135)
-	elseif rarity == "Rare" then
-		part.Color = Color3.fromRGB(0, 0, 255)
-	elseif rarity == "Epic" then
-		part.Color = Color3.fromRGB(128, 0, 128)
-	elseif rarity == "Legendary" then
-		part.Color = Color3.fromRGB(255, 215, 0)
+	if toolTemplate then
+		-- Chercher le Model visuel dans le Tool (tout sauf Handle)
+		local visualModel = nil
+		for _, child in ipairs(toolTemplate:GetChildren()) do
+			if child:IsA("Model") then
+				visualModel = child
+				break
+			end
+		end
+
+		if visualModel then
+			local clone = visualModel:Clone()
+			clone.Name = "Spawner_" .. rarity
+
+			-- Ancrer toutes les parts
+			for _, part in ipairs(clone:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Anchored = true
+					part.CanCollide = true
+				end
+			end
+
+			clone.Parent = workspace
+
+			-- Poser la base du modèle à la surface du slot
+			local _, modelSize = clone:GetBoundingBox()
+			local surfaceOffset = slotPart.Size.Y / 2 + modelSize.Y / 2
+			clone:PivotTo(targetCFrame * CFrame.new(0, surfaceOffset, 0) * CFrame.Angles(0, math.rad(90), 0))
+			-- Point de référence au centre du modèle (les toys spawns à la base)
+			local boundingCF, boundingSize = clone:GetBoundingBox()
+			local anchor = Instance.new("Part")
+			anchor.Name = "SpawnAnchor"
+			anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+			anchor.Anchored = true
+			anchor.CanCollide = false
+			anchor.Transparency = 1
+			anchor.CFrame = CFrame.new(boundingCF.Position - Vector3.new(0, boundingSize.Y / 2, 0))
+			anchor.Parent = clone
+			return anchor
+		end
 	end
 
+	-- Fallback : Part colorée si le modèle n'est pas trouvé
+	warn("Modèle visuel introuvable pour rareté:", rarity, "— fallback Part colorée")
+	local part = Instance.new("Part")
+	part.Name = "Spawner_" .. rarity
+	part.Size = Vector3.new(2, 2, 2)
+	part.Anchored = true
+	part.CanCollide = true
+	part.CFrame = targetCFrame
 	part.Parent = workspace
 	return part
 end
+
+local EGG_COLORS = {
+	Common    = Color3.fromRGB(135, 135, 135),
+	Uncommon  = Color3.fromRGB(30,  180, 30),
+	Rare      = Color3.fromRGB(0,   100, 255),
+	Epic      = Color3.fromRGB(128, 0,   128),
+	Legendary = Color3.fromRGB(255, 215, 0),
+}
+
+-- Nom du Tool oeuf (identifié par rareté uniquement)
+local function eggToolName(rarity)
+	return "Oeuf_" .. rarity
+end
+
+-- Donne un oeuf stacké dans le backpack (crée ou incrémente Count)
+-- @param player  : Player - le joueur
+-- @param rarity  : string - rareté de l'oeuf (Common, Rare, ...)
+function PlacementService.GiveEggTool(player, rarity)
+	local toolName = eggToolName(rarity)
+
+	-- Stack si déjà présent
+	local existing = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+
+	if existing and existing:IsA("Tool") then
+		existing:SetAttribute("Count", (existing:GetAttribute("Count") or 1) + 1)
+		return
+	end
+
+	-- Créer le Tool
+	local tool = Instance.new("Tool")
+	tool.Name          = toolName
+	tool.RequiresHandle = true
+	tool:SetAttribute("Rarity", rarity)
+	tool:SetAttribute("Count",  1)
+
+	local handle = Instance.new("Part")
+	handle.Name         = "Handle"
+	handle.Size         = Vector3.new(1, 1, 1)
+	handle.Color        = EGG_COLORS[rarity] or Color3.fromRGB(255, 255, 255)
+	handle.CanCollide   = false
+	handle.Massless     = true
+	handle.Parent       = tool
+
+	tool.Parent = player.Backpack
+end
+
+-- ── Brainrot Tools ────────────────────────────────────────────────────────────
+
+-- Donne un brainrot spécifique comme Tool stacké dans le backpack
+function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rarity, revenuePerSecond, variant)
+	local toolName = "Brainrot_" .. brainrotName
+
+	local existing = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+
+	if existing and existing:IsA("Tool") then
+		existing:SetAttribute("Count", (existing:GetAttribute("Count") or 1) + 1)
+		return
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name           = toolName
+	tool.RequiresHandle = true
+	tool:SetAttribute("BrainrotName",     brainrotName)
+	tool:SetAttribute("ModelName",        modelName or "")
+	tool:SetAttribute("Rarity",           rarity)
+	tool:SetAttribute("RevenuePerSecond", revenuePerSecond)
+	tool:SetAttribute("BrainrotVariant",  variant or "Normal")
+	tool:SetAttribute("Count",            1)
+
+	local handle = Instance.new("Part")
+	handle.Name      = "Handle"
+	handle.Size      = Vector3.new(1, 1, 1)
+	handle.Color     = EGG_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
+	handle.CanCollide = false
+	handle.Massless   = true
+	handle.Parent     = tool
+
+	tool.Parent = player.Backpack
+end
+
+-- Retire un brainrot tool du backpack/personnage (décrémente Count ou détruit)
+function PlacementService.RemoveBrainrotTool(player, brainrotName)
+	local toolName = "Brainrot_" .. brainrotName
+
+	local tool = player.Backpack:FindFirstChild(toolName)
+		or (player.Character and player.Character:FindFirstChild(toolName))
+	if not tool then return end
+
+	local count = tool:GetAttribute("Count") or 1
+	if count > 1 then
+		tool:SetAttribute("Count", count - 1)
+	else
+		tool:Destroy()
+	end
+end
+
+-- Retourne le brainrot Tool équipé ou premier du backpack
+-- @return tool, brainrotName, modelName, rarity, revenuePerSecond
+function PlacementService.GetEquippedBrainrotInfo(player)
+	local function check(t)
+		if t:IsA("Tool") and t.Name:match("^Brainrot_") then
+			return t,
+				t:GetAttribute("BrainrotName"),
+				t:GetAttribute("ModelName") or "",
+				t:GetAttribute("Rarity"),
+				t:GetAttribute("RevenuePerSecond")
+		end
+	end
+
+	if player.Character then
+		local t = player.Character:FindFirstChildOfClass("Tool")
+		if t then
+			local tool, n, m, r, rev = check(t)
+			if tool then return tool, n, m, r, rev end
+		end
+	end
+
+	for _, t in ipairs(player.Backpack:GetChildren()) do
+		local tool, n, m, r, rev = check(t)
+		if tool then return tool, n, m, r, rev end
+	end
+
+	return nil
+end
+
+-- Retourne le Tool oeuf équipé ou le premier du backpack
+-- @return tool, rarity
+function PlacementService.GetEquippedEggInfo(player)
+	local function check(t)
+		if t:IsA("Tool") and t.Name:match("^Oeuf_") then
+			return t, t:GetAttribute("Rarity")
+		end
+	end
+
+	if player.Character then
+		local t = player.Character:FindFirstChildOfClass("Tool")
+		if t then
+			local tool, r = check(t)
+			if tool then return tool, r end
+		end
+	end
+
+	for _, t in ipairs(player.Backpack:GetChildren()) do
+		local tool, r = check(t)
+		if tool then return tool, r end
+	end
+
+	return nil, nil
+end
+
+-- Retire un oeuf du backpack (décrémente Count ou détruit)
+-- @param player : Player - le joueur
+-- @param rarity : string - rareté de l'oeuf
+function PlacementService.RemoveEggTool(player, rarity)
+	local toolName = eggToolName(rarity)
+	local tool = (player.Character and player.Character:FindFirstChild(toolName))
+		or player.Backpack:FindFirstChild(toolName)
+
+	if not tool or not tool:IsA("Tool") then return end
+
+	local count = tool:GetAttribute("Count") or 1
+	if count <= 1 then
+		tool:Destroy()
+	else
+		tool:SetAttribute("Count", count - 1)
+	end
+end
+
 
 -- Gets first available spawner from player inventory
 -- @param playerData: PlayerData - Player data instance
 -- @return string|nil - Rarity of first available spawner or nil if none
 function PlacementService.GetFirstAvailableSpawner(playerData)
-	local rarityOrder = {"Common", "Rare", "Epic", "Legendary"}
+	local rarityOrder = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
 
 	for _, rarity in ipairs(rarityOrder) do
 		if playerData.inventory[rarity] and playerData.inventory[rarity] > 0 then
@@ -249,11 +619,8 @@ function PlacementService.RestorePlacedSpawners(userId)
 		return
 	end
 
-	print("Spawners to restore:", #playerData.placedSpawners)
-
 	-- Restore each saved spawner
-	for i, placedData in ipairs(playerData.placedSpawners) do
-		print("Restoring spawner", i, ":", placedData.SlotName, placedData.Rarity)
+	for _, placedData in ipairs(playerData.placedSpawners) do
 
 		local slotName = placedData.SlotName
 		local rarity = placedData.Rarity
@@ -274,17 +641,111 @@ function PlacementService.RestorePlacedSpawners(userId)
 		local spawnerPart = PlacementService.CreateSpawnerPart(rarity, slotPart)  -- ⭐ Passer le slot
 		slotData.SpawnerPart = spawnerPart
 
-		-- Update slot visual
-		slotData.Part.Color = Color3.fromRGB(255, 0, 0)
-		slotData.Part.ProximityPrompt.Enabled = false
+		-- Rendre tout le slot invisible
+		local slotModel = slotData.Model
+		if slotModel:IsA("Model") then
+			for _, part in ipairs(slotModel:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Transparency = 1
+				end
+			end
+		else
+			slotModel.Transparency = 1
+		end
+		-- Déconnecter placement et passer en mode "Récupérer"
+		if slotData.PlacementConnection then
+			slotData.PlacementConnection:Disconnect()
+			slotData.PlacementConnection = nil
+		end
+
+		local pp = slotData.ProximityPrompt
+		pp.ActionText          = "Récupérer"
+		pp.ObjectText          = rarity .. " Spawner"
+		pp.HoldDuration        = 0
+		pp.MaxActivationDistance = 10
+		pp.RequiresLineOfSight = false
+		pp.Enabled             = true
+
+		local capturedSlotName = slotName
+		slotData.PickupConnection = pp.Triggered:Connect(function(triggeringPlayer)
+			if triggeringPlayer.UserId ~= userId then return end
+			PlacementService.PickupSpawner(userId, capturedSlotName, triggeringPlayer)
+		end)
 
 		-- ⭐ Restart spawner avec spawnerPart
 		task.spawn(function()
-			_SpawnerService.StartSpawner(userId, rarity, spawnerPart)
+			_SpawnerService.StartSpawner(userId, rarity, spawnerPart, slotName)
 		end)
 
-		print("Spawner restored:", slotName, rarity)
 	end
+end
+
+-- Force le retrait de TOUS les spawners d'un joueur (utilisé lors du Prestige)
+-- Ne remet PAS les spawners dans l'inventaire — reset total.
+-- @param userId: number - Player's user ID
+function PlacementService.ForceRemoveAllSpawners(userId)
+	local prefix = tostring(userId) .. "_"
+
+	for slotKey, slotData in pairs(_slots) do
+		-- Ne traiter que les slots appartenant à ce joueur
+		if slotData.UserId == userId and slotData.Occupied then
+
+			-- Stopper la génération de toys
+			local slotName = slotKey:sub(#prefix + 1)
+			if _SpawnerService and _SpawnerService.StopSpawner then
+				_SpawnerService.StopSpawner(userId, slotName)
+			end
+
+			-- Détruire le visuel du spawner
+			local spawnerPart = slotData.SpawnerPart
+			if spawnerPart then
+				local spawnerModel = spawnerPart.Parent
+				if spawnerModel and spawnerModel:IsA("Model") then
+					spawnerModel:Destroy()
+				else
+					spawnerPart:Destroy()
+				end
+			end
+			slotData.SpawnerPart = nil
+			slotData.Occupied    = false
+
+			-- Restaurer la visibilité du slot
+			local slotModel = slotData.Model
+			if slotModel and slotModel.Parent then
+				if slotModel:IsA("Model") then
+					for _, part in ipairs(slotModel:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.Transparency = 0
+						end
+					end
+				elseif slotModel:IsA("BasePart") then
+					slotModel.Transparency = 0
+				end
+			end
+
+			-- Déconnecter pickup et reconnecter placement
+			if slotData.PickupConnection then
+				slotData.PickupConnection:Disconnect()
+				slotData.PickupConnection = nil
+			end
+
+			local pp = slotData.ProximityPrompt
+			if pp then
+				pp.ActionText   = "Placer"
+				pp.ObjectText   = ""
+				pp.HoldDuration = 0
+				pp.Enabled      = true
+
+				slotData.PlacementConnection = pp.Triggered:Connect(function(player)
+					if player.UserId == userId then
+						PlacementService.OnSlotTriggered(player, slotData.Model)
+					end
+				end)
+			end
+		end
+	end
+
+	print(string.format("[PlacementService] ForceRemoveAllSpawners → Joueur %d reset", userId))
 end
 
 return PlacementService

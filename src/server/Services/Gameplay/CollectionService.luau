@@ -1,194 +1,165 @@
 --[[
-	Manages toy collection and quota progression system
-	Tracks when toys reach collection zone and increments quotas toward generator rewards
-	
-	Main responsibilities:
-	- Register toy ownership for tracking
-	- Detect toys entering collection zone
-	- Increment collection quotas per toy type and rarity
-	- Award generators when quotas are reached
-	- Notify client UI of quota progress
-	
-	Quota workflow: Collect toys → reach quota → receive generator in inventory
+	Gestion de la collecte de toys et du système de quota
+	Les toys sont identifiés par leur rareté uniquement (plus de "type")
+
+	Workflow : collecter des toys → remplir le quota par rareté → recevoir un oeuf générateur
 ]]
 
 local CollectionService = {}
 
-local _PlayerDataService = nil
-local _GeneratorService = nil
-local _ToyConfig = nil
-local _quotaRequirements = {}
-local _toyOwners = {}
-local _lastSaveQuota = {}
-local _OnNotification = game:GetService("ReplicatedStorage"):WaitForChild("RemoteInterface"):WaitForChild("Events"):WaitForChild("OnNotification")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local LevelService       = require(script.Parent.Parent.Progression.LevelService)
+local LevelConfig        = require(ReplicatedStorage.Shared.LevelConfig)
 
--- Initializes service and loads quota requirements
--- @param PlayerDataService: service - Player data management service
--- @param ToyConfig: table - Toy configuration data
--- @param GeneratorService: service - Generator management service
+local _PlayerDataService = nil
+local _GeneratorService  = nil
+local _ToyConfig         = nil
+local _quotaRequirements = {}  -- [rarity] = nombre requis
+local _toyOwners         = {}
+
+local _OnNotification = game:GetService("ReplicatedStorage")
+	:WaitForChild("RemoteInterface")
+	:WaitForChild("Events")
+	:WaitForChild("OnNotification")
+
+-- Initialise le service
+-- @param PlayerDataService : service - données joueur
+-- @param ToyConfig         : table   - config des toys par rareté
+-- @param GeneratorService  : service - service de génération d'argent
 function CollectionService.Init(PlayerDataService, ToyConfig, GeneratorService)
 	_PlayerDataService = PlayerDataService
-	_GeneratorService = GeneratorService
-	_ToyConfig = ToyConfig
+	_GeneratorService  = GeneratorService
+	_ToyConfig         = ToyConfig
 
-	-- Cache quota requirements from ToyConfig
-	for toyName, toyData in pairs(ToyConfig) do
-		_quotaRequirements[toyName] = toyData.QuotaToGenerator
+	-- Cache des quotas requis par rareté
+	for rarity, data in pairs(ToyConfig) do
+		_quotaRequirements[rarity] = data.QuotaToGenerator
 	end
-
-	-- Connect collection zone trigger
-	--local collectionPart = workspace.Collection:FindFirstChild("CollectionZone")
-	--collectionPart.Touched:Connect(function(hit)
-	--	CollectionService.OnToyCollected(hit)
-	--end)
 
 	print("CollectionService initialized")
 end
 
--- Handles toy collection when entering collection zone
--- @param toy: BasePart - The toy that was collected
+-- Appelé quand un toy touche la zone de collecte
+-- @param toy : BasePart - le toy collecté
 function CollectionService.OnToyCollected(toy)
-	-- Validate toy
-	if not toy or not toy:IsA("BasePart") then
+	if not toy then return end
+
+	-- Chercher la BasePart principale (si c'est un Model, prendre le PrimaryPart)
+	local part = toy
+	if toy:IsA("Model") then
+		part = toy.PrimaryPart or toy:FindFirstChildWhichIsA("BasePart")
+		if not part then toy:Destroy(); return end
+	elseif not toy:IsA("BasePart") then
 		return
 	end
 
-	-- Get toy metadata
-	local toyType = toy:GetAttribute("ToyType")
-	local toyRarity = toy:GetAttribute("ToyRarity")
-	local spawnerRarity = toy:GetAttribute("SpawnerRarity")  -- ⭐ NOUVEAU
-	local userId = toy:GetAttribute("OwnerId")
+	local rarity = part:GetAttribute("ToyRarity")
+	local userId = part:GetAttribute("OwnerId")
 
-	if not toyType or not toyRarity or not spawnerRarity or not userId then
-		warn("Invalid toy metadata")
-		toy:Destroy()
+	if not rarity or not userId then
+		-- Part visuelle sans attribut (CanCollide=false) → ignorer silencieusement
 		return
 	end
 
-	-- Get toy configuration
-	local toyConfig = _ToyConfig[toyType]
-	if not toyConfig then
-		warn("Toy config not found for type:", toyType)
-		toy:Destroy()
+	if not _ToyConfig[rarity] then
+		CollectionService.DestroyToy(toy)
 		return
 	end
 
-	-- ⭐ DOUBLE RARETÉ: Calculer valeur
-	local sellValue = toyConfig.SellValue[toyRarity][spawnerRarity]
-	if not sellValue then
-		warn("Sell value not found for", toyType, toyRarity, "from spawner", spawnerRarity)
-		toy:Destroy()
-		return
-	end
+	CollectionService.IncrementQuota(userId, rarity)
+	CollectionService.CheckQuotaComplete(userId, rarity)
 
-	-- Give money to player
-	local MoneyService = require(script.Parent.Parent.Core.MoneyService)
-	MoneyService.AddMoney(userId, sellValue)
-
-	-- Increment quota and check completion
-	CollectionService.IncrementQuota(userId, toyType, toyRarity)
-	CollectionService.CheckQuotaComplete(userId, toyType, toyRarity)
-
-	-- Destroy toy
-	toy:Destroy()
-
-	print("✅ Toy collected:", toyType, toyRarity, "from", spawnerRarity, "spawner →", sellValue, "$")
+	CollectionService.DestroyToy(toy)
 end
 
--- Increments collection quota for a toy type and rarity
--- @param userId: number - Player's user ID
--- @param toyType: string - Type of toy collected
--- @param rarity: string - Rarity of toy collected
--- @return number - Current quota count after increment
-function CollectionService.IncrementQuota(userId, toyType, rarity)
+-- Détruit le toy complet (Model wrapper ou Part standalone)
+function CollectionService.DestroyToy(toy)
+	if toy:IsA("Model") then
+		toy:Destroy()
+	elseif toy:IsA("BasePart") then
+		-- Remonter au Model parent si c'est la sphère physique
+		local parent = toy.Parent
+		if parent and parent:IsA("Model") then
+			parent:Destroy()
+		else
+			toy:Destroy()
+		end
+	end
+end
+
+-- Incrémente le quota d'une rareté pour un joueur
+-- @param userId : number - ID du joueur
+-- @param rarity : string - rareté du toy collecté
+-- @return number - quota actuel après incrément
+function CollectionService.IncrementQuota(userId, rarity)
 	local playerData = _PlayerDataService.GetPlayerData(userId)
-	if not playerData then
-		return 0
+	if not playerData then return 0 end
+
+	-- Initialise si nécessaire
+	if not playerData.quotaProgress[rarity] then
+		playerData.quotaProgress[rarity] = 0
 	end
 
-	-- Initialize quota structure if first time
-	if not playerData.quotaProgress[toyType] then
-		playerData.quotaProgress[toyType] = {
-			Common = 0,
-			Rare = 0,
-			Epic = 0,
-			Legendary = 0
-		}
-	end
+	playerData.quotaProgress[rarity] += 1
 
-	-- Increment quota
-	playerData.quotaProgress[toyType][rarity] += 1
+	-- Pas de save ici : trop fréquent → throttling DataStore
+	-- Sauvegardé par CheckQuotaComplete (SavePlayerImmediate) et AutoSaveHandler
 
-	-- Batch save (every 5 toys)
-	if not _lastSaveQuota[userId] then
-		_lastSaveQuota[userId] = 0
-	end
-
-	_lastSaveQuota[userId] += 1
-
-	if _lastSaveQuota[userId] >= 5 then
-		_PlayerDataService.SavePlayer(userId)
-		_lastSaveQuota[userId] = 0
-	end
-
-	-- Notify client UI
+	-- Notifier le client
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated
 	local player = game.Players:GetPlayerByUserId(userId)
-	local maxQuota = _quotaRequirements[toyType][rarity]
+	local maxQuota = _quotaRequirements[rarity]
 
-	if player then
-		OnQuotaUpdated:FireClient(player, toyType, rarity, playerData.quotaProgress[toyType][rarity], maxQuota)
+	if player and maxQuota then
+		OnQuotaUpdated:FireClient(player, rarity, playerData.quotaProgress[rarity], maxQuota)
 	end
 
-	return playerData.quotaProgress[toyType][rarity]
+	return playerData.quotaProgress[rarity]
 end
 
--- Checks if quota is complete and awards generator
--- @param userId: number - Player's user ID
--- @param toyType: string - Type of toy
--- @param rarity: string - Rarity of toy
--- @return boolean - true if quota was completed, false otherwise
-function CollectionService.CheckQuotaComplete(userId, toyType, rarity)
+-- Vérifie si le quota est atteint et distribue la récompense
+-- @param userId : number - ID du joueur
+-- @param rarity : string - rareté à vérifier
+-- @return boolean - true si quota complété
+function CollectionService.CheckQuotaComplete(userId, rarity)
 	local playerData = _PlayerDataService.GetPlayerData(userId)
-	if not playerData then
-		return false
+	if not playerData then return false end
+
+	local required = _quotaRequirements[rarity]
+	local current  = playerData.quotaProgress[rarity] or 0
+
+	if current < required then return false end
+
+	-- Récompense : oeuf de la rareté du toy collecté
+	_PlayerDataService.AddGenerator(userId, rarity)
+
+	local player = game.Players:GetPlayerByUserId(userId)
+	if player then
+		local PlacementService = require(script.Parent.PlacementService)
+		PlacementService.GiveEggTool(player, rarity)
+
+		if _OnNotification then
+			_OnNotification:FireClient(player, "Oeuf " .. rarity .. " obtenu !", "SUCCESS")
+		end
 	end
-
-	local requiredQuota = _quotaRequirements[toyType][rarity]
-	local currentQuota = playerData.quotaProgress[toyType][rarity]
-
-	-- Check if quota not yet reached
-	if currentQuota < requiredQuota then
-		return false
-	end
-
-	print("Quota reached!", toyType, rarity, currentQuota, "/", requiredQuota)
-
-	-- Award generator to inventory
-	local generatorType = _ToyConfig[toyType].GeneratorType
-	_PlayerDataService.AddGenerator(userId, generatorType, rarity)
-	print("Generator added to inventory:", generatorType, rarity)
 
 	-- Reset quota
-	playerData.quotaProgress[toyType][rarity] = 0
+	playerData.quotaProgress[rarity] = 0
 
-	-- Save immediately to prevent exploit
-	_PlayerDataService.SavePlayer(userId)
-	print("Data saved after quota completion")
+	-- Pas de save ici, géré au quit du joueur
 
-	-- Notify client of quota reset
+	-- Notifier le client du reset
 	local OnQuotaUpdated = game:GetService("ReplicatedStorage").RemoteInterface.Events.OnQuotaUpdated
-	local player = game.Players:GetPlayerByUserId(userId)
 	if player then
-		OnQuotaUpdated:FireClient(player, toyType, rarity, 0, requiredQuota)
+		OnQuotaUpdated:FireClient(player, rarity, 0, required)
 	end
 
 	return true
 end
 
--- Registers toy ownership for tracking
--- @param toy: BasePart - The toy object
--- @param userId: number - Owner's user ID
+-- Enregistre le propriétaire d'un toy
+-- @param toy    : BasePart - le toy
+-- @param userId : number   - ID du propriétaire
 function CollectionService.RegisterToyOwner(toy, userId)
 	_toyOwners[toy] = userId
 end
