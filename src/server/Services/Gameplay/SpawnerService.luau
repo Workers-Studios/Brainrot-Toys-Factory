@@ -83,23 +83,24 @@ local function getCollectorAngle(fromPos, plot)
 end
 
 -- Pioche un modèle aléatoire dans :
---   ServerStorage/GeneratorModels/{rarity}/
+--   ServerStorage/ToyModels/{rarity}/
 local function pickRandomModel(rarity)
-	local generatorModels = ServerStorage:FindFirstChild("GeneratorModels")
-	if not generatorModels then
-		warn("[SpawnerService] ❌ Dossier 'GeneratorModels' introuvable dans ServerStorage")
+	local toyModels = ServerStorage:FindFirstChild("ToyModels")
+	if not toyModels then
+		warn("[SpawnerService] ❌ Dossier 'ToyModels' introuvable dans ServerStorage")
 		return nil
 	end
 
-	local tierFolder = generatorModels:FindFirstChild(rarity)
+	local tierFolder = toyModels:FindFirstChild(rarity)
 	if not tierFolder then
 		warn("[SpawnerService] ❌ Dossier rareté introuvable :", rarity)
 		return nil
 	end
 
+	-- Structure plate : ToyModels/{rarity}/{Model3D}
 	local children = tierFolder:GetChildren()
 	if #children == 0 then
-		warn("[SpawnerService] ❌ Aucun modèle dans GeneratorModels/" .. rarity)
+		warn("[SpawnerService] ❌ Aucun modèle dans ToyModels/" .. rarity)
 		return nil
 	end
 

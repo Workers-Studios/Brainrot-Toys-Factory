@@ -111,12 +111,19 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 		local tierFolder     = brainrotModels and brainrotModels:FindFirstChild(rarity)
 		local brainrotFolder = tierFolder and tierFolder:FindFirstChild(modelName)
 
-		-- Chercher la variante exacte, sinon fallback sur le premier enfant
-		local template = brainrotFolder and brainrotFolder:FindFirstChild(variantToUse)
+		-- Convention de nommage :
+		--   Normal  → "Fluri Flura"       (juste le nom du brainrot)
+		--   Gold    → "Gold Fluri Flura"  ({variant} {nomBrainrot})
+		local modelInstanceName = (variantToUse == "Normal")
+			and modelName
+			or (variantToUse .. " " .. modelName)
+
+		local template = brainrotFolder and brainrotFolder:FindFirstChild(modelInstanceName)
+		-- Fallback : premier enfant si la variante exacte n'existe pas
 		if not template and brainrotFolder then
 			local children = brainrotFolder:GetChildren()
 			if #children > 0 then
-				template = children[math.random(1, #children)]
+				template = children[1]
 			end
 		end
 
