@@ -1,70 +1,159 @@
 --[[
 	LevelUIHandler - Affichage du niveau et de la progression EXP
 
-	Écoute l'événement OnLevelChanged (server → client) et met à jour
-	l'interface HUD avec le niveau actuel et la barre d'EXP.
-
-	Structure UI attendue dans StarterGui :
-	  HUD
-	  └── LevelFrame
-	      ├── LevelLabel    (TextLabel  → "Niveau X")
-	      ├── ExpBar        (Frame      → barre de progression)
-	      │   └── Fill      (Frame      → la partie colorée qui grandit)
-	      └── ExpLabel      (TextLabel  → "XXX / YYY EXP")
-
-	Si le joueur est Maître Prestige et au niveau max, ExpLabel affiche "∞ EXP"
+	- LevelFrame (rectangle HUD) : caché, bouton Prestige reparenté dans HUD
+	- Niveau : BillboardGui au-dessus de la tête du joueur
+	- Barre EXP : full width, collée en bas de l'écran, créée par code
 ]]
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local player = Players.LocalPlayer
+local player    = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
 
+local RemoteInterface    = ReplicatedStorage:WaitForChild("RemoteInterface")
+local onLevelChanged     = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
+local onPrestigeChanged  = RemoteInterface:WaitForChild("Events"):WaitForChild("OnPrestigeChanged")
 
--- ─── Attendre les remotes ─────────────────────────────────────────────────────
-local RemoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
-local onLevelChanged  = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
+-- ─── HUD : cacher le LevelFrame, garder le bouton Prestige ───────────────────
+local HUD        = PlayerGui:WaitForChild("HUD")
+local LevelFrame = HUD:WaitForChild("LevelFrame")
 
--- ─── Référence à l'UI ─────────────────────────────────────────────────────────
--- LevelFrame est créé dynamiquement par HUDSetup → on attend son apparition
-local HUD         = PlayerGui:WaitForChild("HUD")
-local LevelFrame  = HUD:WaitForChild("LevelFrame")
-local LevelLabel  = LevelFrame:WaitForChild("LevelLabel")
-local ExpBar      = LevelFrame:WaitForChild("ExpBar")
-local ExpFill     = ExpBar:WaitForChild("Fill")
-local ExpLabel    = LevelFrame:WaitForChild("ExpLabel")
+-- Récupérer le bouton Prestige avant de cacher le frame
+local prestigeButton = LevelFrame:FindFirstChild("PrestigeButton")
+	or LevelFrame:FindFirstChildWhichIsA("TextButton")
+	or LevelFrame:FindFirstChildWhichIsA("ImageButton")
 
--- ─── Mise à jour de l'affichage ───────────────────────────────────────────────
-local function updateUI(level, exp, expForNext)
-	if not LevelFrame then return end  -- UI pas encore créée dans Studio
+if prestigeButton then
+	prestigeButton.Parent = HUD
+end
 
-	-- Afficher le niveau
-	if LevelLabel then
-		LevelLabel.Text = "Niveau " .. tostring(level)
-	end
+-- Masquer tout le LevelFrame
+LevelFrame.Visible = false
 
-	-- Barre d'EXP (système relatif : exp repart à 0 à chaque niveau)
-	if ExpFill and ExpBar then
-		if expForNext and expForNext > 0 then
-			local ratio = math.clamp(exp / expForNext, 0, 1)
-			ExpFill.Size = UDim2.new(ratio, 0, 1, 0)
-		else
-			ExpFill.Size = UDim2.new(1, 0, 1, 0)
-		end
-	end
+-- ─── BillboardGui : niveau au-dessus de la tête ───────────────────────────────
+local billboard = Instance.new("BillboardGui")
+billboard.Name         = "LevelBillboard"
+billboard.Size         = UDim2.new(0, 120, 0, 44)
+billboard.StudsOffset  = Vector3.new(0, 1.7, 0)
+billboard.AlwaysOnTop  = false
+billboard.MaxDistance  = 40
+billboard.ResetOnSpawn = false
 
-	-- Texte EXP
-	if ExpLabel then
-		if expForNext then
-			ExpLabel.Text = string.format("%d / %d EXP", exp, expForNext)
-		else
-			ExpLabel.Text = "MAX"
-		end
+-- Prestige (ligne du haut, plus petit)
+local prestigeLabel = Instance.new("TextLabel")
+prestigeLabel.Size                   = UDim2.new(1, 0, 0.45, 0)
+prestigeLabel.Position               = UDim2.new(0, 0, 0, 0)
+prestigeLabel.BackgroundTransparency = 1
+prestigeLabel.Text                   = ""
+prestigeLabel.TextColor3             = Color3.fromRGB(255, 215, 0)
+prestigeLabel.Font                   = Enum.Font.GothamBold
+prestigeLabel.TextSize               = 11
+prestigeLabel.TextStrokeTransparency = 0.4
+prestigeLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+prestigeLabel.TextXAlignment         = Enum.TextXAlignment.Center
+prestigeLabel.Parent                 = billboard
+
+-- Niveau (ligne du bas)
+local levelLabel = Instance.new("TextLabel")
+levelLabel.Size                   = UDim2.new(1, 0, 0.55, 0)
+levelLabel.Position               = UDim2.new(0, 0, 0.45, 0)
+levelLabel.BackgroundTransparency = 1
+levelLabel.Text                   = "Niveau ?"
+levelLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+levelLabel.Font                   = Enum.Font.GothamBold
+levelLabel.TextSize               = 14
+levelLabel.TextStrokeTransparency = 0.4
+levelLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+levelLabel.TextXAlignment         = Enum.TextXAlignment.Center
+levelLabel.Parent                 = billboard
+
+local function attachBillboard(character)
+	local head = character:WaitForChild("Head", 10)
+	if head then
+		billboard.Parent = head
 	end
 end
 
--- ─── Connexion à l'événement serveur ─────────────────────────────────────────
+if player.Character then
+	attachBillboard(player.Character)
+end
+player.CharacterAdded:Connect(attachBillboard)
+
+-- ─── Barre EXP full width en bas de l'écran ──────────────────────────────────
+local BAR_HEIGHT = 8
+
+local expGui = Instance.new("ScreenGui")
+expGui.Name           = "ExpBarUI"
+expGui.ResetOnSpawn   = false
+expGui.IgnoreGuiInset = true
+expGui.DisplayOrder   = 20
+expGui.Parent         = PlayerGui
+
+local barBg = Instance.new("Frame")
+barBg.Name              = "ExpBarBg"
+barBg.Size              = UDim2.new(1, 0, 0, BAR_HEIGHT)
+barBg.Position          = UDim2.new(0, 0, 1, 0)
+barBg.AnchorPoint       = Vector2.new(0, 1)
+barBg.BackgroundColor3  = Color3.fromRGB(20, 20, 20)
+barBg.BorderSizePixel   = 0
+barBg.Parent            = expGui
+
+local barFill = Instance.new("Frame")
+barFill.Name             = "Fill"
+barFill.Size             = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(80, 160, 255)
+barFill.BorderSizePixel  = 0
+barFill.Parent           = barBg
+
+local gradient = Instance.new("UIGradient")
+gradient.Color    = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 130, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 200, 255)),
+})
+gradient.Rotation = 0
+gradient.Parent   = barFill
+
+local barLabel = Instance.new("TextLabel")
+barLabel.Size                   = UDim2.new(1, 0, 1, 0)
+barLabel.BackgroundTransparency = 1
+barLabel.Text                   = ""
+barLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+barLabel.Font                   = Enum.Font.GothamBold
+barLabel.TextSize               = 7
+barLabel.TextXAlignment         = Enum.TextXAlignment.Center
+barLabel.TextYAlignment         = Enum.TextYAlignment.Center
+barLabel.ZIndex                 = 2
+barLabel.Parent                 = barBg
+
+-- ─── Mise à jour de l'affichage ───────────────────────────────────────────────
+local function updateUI(level, exp, expForNext)
+	levelLabel.Text = "Niveau " .. tostring(level)
+
+	if expForNext and expForNext > 0 then
+		local ratio = math.clamp(exp / expForNext, 0, 1)
+		barFill.Size  = UDim2.new(ratio, 0, 1, 0)
+		barLabel.Text = string.format("%d / %d EXP", exp, expForNext)
+	else
+		barFill.Size  = UDim2.new(1, 0, 1, 0)
+		barLabel.Text = "MAX"
+	end
+end
+
+-- ─── Connexion aux événements serveur ────────────────────────────────────────
 onLevelChanged.OnClientEvent:Connect(function(level, exp, expForNext)
 	updateUI(level, exp, expForNext)
+end)
+
+onPrestigeChanged.OnClientEvent:Connect(function(prestigeLevel, isMasterPrestige)
+	if isMasterPrestige then
+		prestigeLabel.Text      = "⭐ Maître Prestige"
+		prestigeLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+	elseif prestigeLevel and prestigeLevel > 0 then
+		prestigeLabel.Text      = "Prestige " .. tostring(prestigeLevel)
+		prestigeLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+	else
+		prestigeLabel.Text = ""
+	end
 end)

@@ -51,10 +51,16 @@ local RARITY_COLORS = {
 	Legendary = Color3.fromRGB(255, 215, 0),
 }
 
+local function formatMoney(n)
+	local s = tostring(math.floor(n))
+	return s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+end
+
 -- Pool dynamique : construit en scannant BrainrotModels/{rarity}/ au démarrage
 local _dynamicPools = {}  -- [rarity] = { {Name, ModelName, Weight, RevenuePerSecond}, ... }
 
 local function buildDynamicPools(GeneratorConfig)
+	local BrainrotConfig = require(script.Parent.Parent.Parent.Config.BrainrotConfig)
 	local brainrotModels = ServerStorage:FindFirstChild("BrainrotModels")
 	if not brainrotModels then
 		warn("[GPS] ❌ BrainrotModels introuvable — pools dynamiques vides")
@@ -68,13 +74,16 @@ local function buildDynamicPools(GeneratorConfig)
 			continue
 		end
 
+		local rarityBrainrots = BrainrotConfig[rarity] or {}
 		local pool = {}
 		for _, folder in ipairs(tierFolder:GetChildren()) do
+			local cfg = rarityBrainrots[folder.Name]
+			local revenue = cfg and cfg.RevenuePerSecond or rarityData.RevenuePerSecond or 0
 			table.insert(pool, {
 				Name             = folder.Name,
 				ModelName        = folder.Name,
-				Weight           = 1,  -- poids égal entre tous les brainrots d'une rareté
-				RevenuePerSecond = rarityData.RevenuePerSecond or 0,
+				Weight           = 1,
+				RevenuePerSecond = revenue,
 			})
 		end
 
@@ -189,10 +198,12 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 			local originalRotation = template:GetPivot().Rotation
 
 			local clone = template:Clone()
-			for _, part in ipairs(clone:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.Anchored   = true
-					part.CanCollide = true
+			for _, desc in ipairs(clone:GetDescendants()) do
+				if desc:IsA("BasePart") then
+					desc.Anchored   = true
+					desc.CanCollide = true
+				elseif desc:IsA("BillboardGui") then
+					desc:Destroy()
 				end
 			end
 
@@ -218,6 +229,56 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 			clone.Parent = slotData.Model
 			slotData.GeneratorPart = clone
 			tagGeneratorVisual(clone, rarity, variantToUse, revenuePerSecond)
+
+			-- ── Billboard monde (taille proportionnelle à la distance) ──────────
+			local _, modelSize = clone:GetBoundingBox()
+			local billboard = Instance.new("BillboardGui")
+			billboard.Name        = "BrainrotLabel"
+			billboard.Size        = UDim2.new(0, 200, 0, 72)
+			billboard.StudsOffset = Vector3.new(0, modelSize.Y / 2 + 3, 0)
+			billboard.AlwaysOnTop = false
+			billboard.MaxDistance = 60
+			billboard.Parent      = clone
+
+			local bg = Instance.new("Frame")
+			bg.Size                   = UDim2.new(1, 0, 1, 0)
+			bg.BackgroundColor3       = Color3.fromRGB(10, 10, 10)
+			bg.BackgroundTransparency = 0.3
+			bg.BorderSizePixel        = 0
+			bg.Parent                 = billboard
+			Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+			local nameLbl = Instance.new("TextLabel")
+			nameLbl.Size                   = UDim2.new(1, -10, 0.38, 0)
+			nameLbl.Position               = UDim2.new(0, 5, 0.04, 0)
+			nameLbl.BackgroundTransparency = 1
+			nameLbl.Text                   = modelName or "?"
+			nameLbl.TextColor3             = Color3.fromRGB(255, 255, 255)
+			nameLbl.Font                   = Enum.Font.GothamBold
+			nameLbl.TextScaled             = true
+			nameLbl.Parent                 = bg
+
+			local variantColor = VariantConfig.Colors[variantToUse] or RARITY_COLORS[rarity]
+			local variantLbl = Instance.new("TextLabel")
+			variantLbl.Size                   = UDim2.new(1, -10, 0.30, 0)
+			variantLbl.Position               = UDim2.new(0, 5, 0.38, 0)
+			variantLbl.BackgroundTransparency = 1
+			variantLbl.Text                   = variantToUse ~= "Normal" and variantToUse or rarity
+			variantLbl.TextColor3             = variantColor
+			variantLbl.Font                   = Enum.Font.GothamBold
+			variantLbl.TextScaled             = true
+			variantLbl.Parent                 = bg
+
+			local revenueLbl = Instance.new("TextLabel")
+			revenueLbl.Size                   = UDim2.new(1, -10, 0.28, 0)
+			revenueLbl.Position               = UDim2.new(0, 5, 0.68, 0)
+			revenueLbl.BackgroundTransparency = 1
+			revenueLbl.Text                   = "$" .. formatMoney(revenuePerSecond) .. "/s"
+			revenueLbl.TextColor3             = Color3.fromRGB(100, 255, 100)
+			revenueLbl.Font                   = Enum.Font.GothamBold
+			revenueLbl.TextScaled             = true
+			revenueLbl.Parent                 = bg
+
 			return clone
 		end
 	end

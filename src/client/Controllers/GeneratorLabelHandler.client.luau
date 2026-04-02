@@ -7,6 +7,9 @@
 	Utilise Camera:WorldToViewportPoint pour une taille d'écran constante.
 ]]
 
+-- Remplacé par BillboardGui côté serveur dans GeneratorPlacementService
+return
+
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera     = workspace.CurrentCamera

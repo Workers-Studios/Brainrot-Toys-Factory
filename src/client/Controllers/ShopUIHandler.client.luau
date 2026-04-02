@@ -25,6 +25,7 @@ local player = Players.LocalPlayer
 local shopUI = player:WaitForChild("PlayerGui"):WaitForChild("ShopUI")
 local shopFrame = shopUI:WaitForChild("ShopFrame")
 local commonButton = shopFrame:WaitForChild("CommonButton")
+local uncommonButton = shopFrame:WaitForChild("UncommonButton")
 local rareButton = shopFrame:WaitForChild("RareButton")
 local epicButton = shopFrame:WaitForChild("EpicButton")
 local legendaryButton = shopFrame:WaitForChild("LegendaryButton")
@@ -71,6 +72,7 @@ shopUI.Enabled = false
 
 -- Appliquer les prix depuis la config dès le chargement
 applyPrice(commonButton,   "Common")
+applyPrice(uncommonButton, "Uncommon")
 applyPrice(rareButton,     "Rare")
 applyPrice(epicButton,     "Epic")
 applyPrice(legendaryButton,"Legendary")
@@ -111,6 +113,10 @@ end
 -- Connect purchase buttons
 commonButton.MouseButton1Click:Connect(function()
 	onPurchaseButtonClicked("Common")
+end)
+
+uncommonButton.MouseButton1Click:Connect(function()
+	onPurchaseButtonClicked("Uncommon")
 end)
 
 rareButton.MouseButton1Click:Connect(function()

@@ -82,6 +82,23 @@ local function getCollectorAngle(fromPos, plot)
 	return math.rad(math.round(math.deg(rawAngle) / 90) * 90)
 end
 
+-- Tire la rareté du toy selon les DropRates du spawner
+local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary" }
+local function rollToyRarity(spawnerRarity)
+	local dropRates = _SpawnerConfig[spawnerRarity] and _SpawnerConfig[spawnerRarity].DropRates
+	if not dropRates then return spawnerRarity end
+
+	local roll = math.random()
+	local cumulative = 0
+	for _, rarity in ipairs(RARITY_ORDER) do
+		cumulative += dropRates[rarity] or 0
+		if roll <= cumulative then
+			return rarity
+		end
+	end
+	return spawnerRarity
+end
+
 -- Pioche un modèle aléatoire dans :
 --   ServerStorage/ToyModels/{rarity}/
 local function pickRandomModel(rarity)
@@ -114,8 +131,9 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 	local spawnerConfig = _SpawnerConfig[spawnerRarity]
 	if not spawnerConfig then return end
 
-	local plot     = PlotService.GetPlot(userId)
-	local template = pickRandomModel(spawnerRarity)
+	local plot      = PlotService.GetPlot(userId)
+	local toyRarity = rollToyRarity(spawnerRarity)
+	local template  = pickRandomModel(toyRarity)
 
 	-- ── Préparer le visuel ───────────────────────────────────────────────────
 	local visual = nil
@@ -138,7 +156,7 @@ function SpawnerService.SpawnToy(userId, spawnerRarity, spawnerPart)
 	root.CollisionGroup = "Toys"
 	root.Anchored       = false
 	root.CFrame         = spawnCF
-	root:SetAttribute("ToyRarity", spawnerRarity)
+	root:SetAttribute("ToyRarity", toyRarity)
 	root:SetAttribute("OwnerId",   userId)
 
 	-- Bloquer toute rotation (le toy glisse sans tourner sur lui-même)

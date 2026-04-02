@@ -98,6 +98,7 @@ local PrestigeService = require(script.Parent.Parent.Services.Progression.Presti
 local PlayerLifecycleHandler   = require(script.Parent.Parent.Handlers.PlayerLifecycleHandler)
 local RemoteFunctionHandler    = require(script.Parent.Parent.Handlers.RemoteFunctionHandler)
 local AutoSaveHandler          = require(script.Parent.Parent.Handlers.AutoSaveHandler)
+local DebugClearHandler        = require(script.Parent.Parent.Handlers.DebugClearHandler)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -146,6 +147,9 @@ end)
 safeInit("AutoSaveHandler", function()
 	AutoSaveHandler.Init(PlayerDataService, GameConfig)
 	AutoSaveHandler.StartAutoSave()
+end)
+safeInit("DebugClearHandler", function()
+	DebugClearHandler.Init(PlayerDataService)
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──

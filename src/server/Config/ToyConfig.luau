@@ -10,23 +10,23 @@
 local ToyConfig = {
 
 	Common = {
-		QuotaToGenerator = 10,
+		QuotaToGenerator = 20,    -- ~30s/oeuf  × 20 = ~10 min
 	},
 
 	Uncommon = {
-		QuotaToGenerator = 8,
+		QuotaToGenerator = 15,    -- ~45s/oeuf  × 15 = ~11 min
 	},
 
 	Rare = {
-		QuotaToGenerator = 5,
+		QuotaToGenerator = 10,    -- ~60s/oeuf  × 10 = ~10 min
 	},
 
 	Epic = {
-		QuotaToGenerator = 3,
+		QuotaToGenerator = 7,     -- ~90s/oeuf  ×  7 = ~10 min
 	},
 
 	Legendary = {
-		QuotaToGenerator = 1,
+		QuotaToGenerator = 5,     -- ~120s/oeuf ×  5 = ~10 min
 	},
 }
 

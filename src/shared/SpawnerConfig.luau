@@ -16,11 +16,11 @@ local SpawnerConfig = {
 		SpawnRate       = 5,
 		RequiredPrestige = 0,
 		DropRates = {
-			Common    = 0.80,
-			Uncommon  = 0.12,
-			Rare      = 0.05,
-			Epic      = 0.02,
-			Legendary = 0.01,
+			Common    = 0.85,
+			Uncommon  = 0.15,
+			Rare      = 0.00,
+			Epic      = 0.00,
+			Legendary = 0.00,
 		},
 	},
 
@@ -32,13 +32,13 @@ local SpawnerConfig = {
 			Common    = 0.70,
 			Uncommon  = 0.18,
 			Rare      = 0.08,
-			Epic      = 0.03,
-			Legendary = 0.01,
+			Epic      = 0.00,
+			Legendary = 0.00,
 		},
 	},
 
 	Rare = {
-		BasePrice       = 20000,
+		BasePrice       = 25000,
 		SpawnRate       = 3,
 		RequiredPrestige = 0,
 		DropRates = {
@@ -46,12 +46,12 @@ local SpawnerConfig = {
 			Uncommon  = 0.22,
 			Rare      = 0.14,
 			Epic      = 0.07,
-			Legendary = 0.02,
+			Legendary = 0.00,
 		},
 	},
 
 	Epic = {
-		BasePrice       = 75000,
+		BasePrice       = 100000,
 		SpawnRate       = 2,
 		RequiredPrestige = 0,
 		DropRates = {
@@ -64,7 +64,7 @@ local SpawnerConfig = {
 	},
 
 	Legendary = {
-		BasePrice       = 150000,
+		BasePrice       = 750000,
 		SpawnRate       = 1,
 		RequiredPrestige = 0,
 		DropRates = {

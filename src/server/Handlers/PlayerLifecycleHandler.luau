@@ -161,11 +161,9 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 
 		-- Sync quotas (structure plate : [rarity] = count)
 		local OnQuotaUpdated = ReplicatedStorage.RemoteInterface.Events.OnQuotaUpdated
-		for rarity, currentCount in pairs(playerData.quotaProgress) do
-			local toyData = ToyConfig[rarity]
-			if toyData then
-				OnQuotaUpdated:FireClient(player, rarity, currentCount, toyData.QuotaToGenerator)
-			end
+		for rarity, toyData in pairs(ToyConfig) do
+			local currentCount = playerData.quotaProgress[rarity] or 0
+			OnQuotaUpdated:FireClient(player, rarity, currentCount, toyData.QuotaToGenerator)
 		end
 
 	end)
