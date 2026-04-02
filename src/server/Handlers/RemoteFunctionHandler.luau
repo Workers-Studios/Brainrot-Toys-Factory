@@ -69,10 +69,14 @@ function RemoteFunctionHandler.Init(ShopService, PlacementService, PlayerDataSer
 		return false, "Not yet implemented"
 	end
 
-	-- Connect RequestPlayerData RemoteFunction (reserved for future use)
-	-- Will allow client to request player data for UI display
+	-- Renvoie les données nécessaires au GUI Index/Inventaire
 	RequestPlayerData.OnServerInvoke = function(player)
-		return nil
+		local playerData = _PlayerDataService.GetPlayerData(player.UserId)
+		if not playerData then return nil end
+		return {
+			discoveredBrainrots = playerData.discoveredBrainrots,
+			brainrotInventory   = playerData.brainrotInventory,
+		}
 	end
 
 	print("RemoteFunctionHandler initialized")

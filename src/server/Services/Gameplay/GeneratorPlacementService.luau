@@ -451,6 +451,9 @@ function GeneratorPlacementService.OnSlotTriggered(player, slotModel)
 		GeneratorPlacementService.PickupGenerator(userId, capturedSlotName, trigPlayer)
 	end)
 
+	-- Marquer comme découvert (Index)
+	playerData:DiscoverBrainrot(brainrot.Name, variantName)
+
 	-- Sauvegarder le placement
 	table.insert(playerData.placedGenerators, {
 		SlotName         = slotModel.Name,
@@ -570,7 +573,7 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	if player then
 		PlacementService.GiveBrainrotTool(player, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue, brainrotVariant)
 	end
-	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue)
+	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue, brainrotVariant)
 
 	notifyTotalRevenue(userId)
 end

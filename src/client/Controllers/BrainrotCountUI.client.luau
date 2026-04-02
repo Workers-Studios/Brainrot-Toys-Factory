@@ -26,7 +26,7 @@ screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 local SLOT_SIZE      = 62
-local HOTBAR_Y       = 8
+local HOTBAR_Y       = 72   -- hauteur de la hotbar Roblox (~62px) + marge, pour afficher au-dessus
 local BADGE_W        = 26
 local BADGE_H        = 18
 

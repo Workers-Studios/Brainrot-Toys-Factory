@@ -15,6 +15,7 @@
 	- placedSpawners     : Spawners actifs sur le plot [{SlotName, Rarity}]
 	- placedGenerators   : Générateurs actifs sur le plot [{SlotName, GeneratorType, Rarity}]
 	- brainrotInventory  : Brainrots dans l'inventaire (non placés sur socles)
+	- discoveredBrainrots: Brainrots découverts au moins une fois, par variante {Normal={}, Gold={}, Diamond={}}
 
 	All modifications trigger auto-save via PlayerDataService
 ]]
@@ -61,6 +62,9 @@ function PlayerData.new(userId)
 	-- ─── Brainrots in inventory (picked up but not placed on display) ─────────
 	self.brainrotInventory = {}
 
+	-- ─── Brainrots découverts (persistant, par variante) ─────────────────────
+	self.discoveredBrainrots = { Normal = {}, Gold = {}, Diamond = {} }
+
 	return self
 end
 
@@ -85,7 +89,15 @@ function PlayerData.load(userId, savedData)
 	self.quotaProgress      = savedData.quotaProgress     or {}
 	self.placedSpawners     = savedData.placedSpawners    or {}
 	self.placedGenerators   = savedData.placedGenerators  or {}
-	self.brainrotInventory  = savedData.brainrotInventory or {}
+	self.brainrotInventory   = savedData.brainrotInventory or {}
+
+	-- Rétrocompatibilité : anciens comptes n'ont pas discoveredBrainrots
+	local saved = savedData.discoveredBrainrots or {}
+	self.discoveredBrainrots = {
+		Normal  = saved.Normal  or {},
+		Gold    = saved.Gold    or {},
+		Diamond = saved.Diamond or {},
+	}
 
 	return self
 end
@@ -104,7 +116,8 @@ function PlayerData:Serialize()
 		quotaProgress     = self.quotaProgress,
 		placedSpawners    = self.placedSpawners,
 		placedGenerators  = self.placedGenerators,
-		brainrotInventory = self.brainrotInventory,
+		brainrotInventory    = self.brainrotInventory,
+		discoveredBrainrots  = self.discoveredBrainrots,
 	}
 end
 
@@ -169,13 +182,27 @@ end
 
 -- ─── Brainrot inventory ───────────────────────────────────────────────────────
 
-function PlayerData:AddBrainrot(name, modelName, rarity, revenuePerSecond)
+function PlayerData:AddBrainrot(name, modelName, rarity, revenuePerSecond, variant)
 	table.insert(self.brainrotInventory, {
 		Name             = name,
 		ModelName        = modelName or "",
 		Rarity           = rarity,
 		RevenuePerSecond = revenuePerSecond,
+		Variant          = variant or "Normal",
 	})
+end
+
+-- Marque un brainrot comme découvert (au moins une fois) pour la page Index
+-- @param name    : string — nom du brainrot (ex. "Lirili Larila")
+-- @param variant : string — "Normal" | "Gold" | "Diamond"
+function PlayerData:DiscoverBrainrot(name, variant)
+	local v = variant or "Normal"
+	local list = self.discoveredBrainrots[v]
+	if not list then return end
+	for _, existing in ipairs(list) do
+		if existing == name then return end  -- déjà découvert
+	end
+	table.insert(list, name)
 end
 
 function PlayerData:RemoveBrainrot(name)
