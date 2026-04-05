@@ -7,11 +7,20 @@
 
 local LevelService = {}
 
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
 local _PlayerDataService = nil
 local _onLevelChanged    = nil
+
+-- Met à jour l'attribut PlayerLevel sur le character (visible par tous les clients)
+local function setCharacterLevel(player, level)
+	local character = player.Character
+	if character then
+		character:SetAttribute("PlayerLevel", level)
+	end
+end
 
 function LevelService.Init(PlayerDataService)
 	_PlayerDataService = PlayerDataService
@@ -20,6 +29,17 @@ function LevelService.Init(PlayerDataService)
 		:WaitForChild("RemoteInterface")
 		:WaitForChild("Events")
 		:WaitForChild("OnLevelChanged")
+
+	-- Re-synchronise les attributs à chaque respawn
+	Players.PlayerAdded:Connect(function(p)
+		p.CharacterAdded:Connect(function(character)
+			task.wait(0.5)  -- laisser PlayerData se charger
+			local pd = _PlayerDataService.GetPlayerData(p.UserId)
+			if pd then
+				character:SetAttribute("PlayerLevel", pd.level)
+			end
+		end)
+	end)
 
 	print("✅ [LevelService] initialisé")
 end
@@ -33,6 +53,7 @@ local function notifyClient(userId, playerData)
 	local expForNext = isAtCap and nil or LevelConfig.GetExpRequired(playerData.level)
 
 	_onLevelChanged:FireClient(player, playerData.level, playerData.exp, expForNext)
+	setCharacterLevel(player, playerData.level)
 end
 
 -- Ajoute de l'EXP et gère les level up (avec surplus)

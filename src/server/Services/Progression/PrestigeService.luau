@@ -70,6 +70,19 @@ function PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig, Fl
 	_onMoneyChanged    = RI:WaitForChild("Events"):WaitForChild("OnMoneyChanged")
 	_onQuotaUpdated    = RI:WaitForChild("Events"):WaitForChild("OnQuotaUpdated")
 
+	-- Re-synchronise les attributs prestige à chaque respawn
+	local Players = game:GetService("Players")
+	Players.PlayerAdded:Connect(function(p)
+		p.CharacterAdded:Connect(function(character)
+			task.wait(0.5)  -- laisser PlayerData se charger
+			local pd = _PlayerDataService.GetPlayerData(p.UserId)
+			if pd then
+				character:SetAttribute("PlayerPrestige", pd.prestigeLevel or 0)
+				character:SetAttribute("PlayerIsMaster",  pd.isMasterPrestige or false)
+			end
+		end)
+	end)
+
 	print("✅ [PrestigeService] initialisé")
 end
 
@@ -224,6 +237,11 @@ function PrestigeService.DoPrestige(userId)
 				playerData.isMasterPrestige
 			)
 		end
+		-- Mettre à jour les attributs character (répliqués à tous les clients)
+		if player.Character then
+			player.Character:SetAttribute("PlayerPrestige", playerData.prestigeLevel)
+			player.Character:SetAttribute("PlayerIsMaster",  playerData.isMasterPrestige)
+		end
 
 		-- Toast de félicitations
 		if _onNotification then
@@ -257,6 +275,11 @@ function PrestigeService.SendInitialData(userId)
 		playerData.prestigeLevel,
 		playerData.isMasterPrestige
 	)
+	-- Attributs character pour les billboards visibles par tous
+	if player.Character then
+		player.Character:SetAttribute("PlayerPrestige", playerData.prestigeLevel)
+		player.Character:SetAttribute("PlayerIsMaster",  playerData.isMasterPrestige)
+	end
 end
 
 return PrestigeService
