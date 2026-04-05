@@ -12,10 +12,12 @@ local AdminService = {}
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local _PlayerDataService = nil
-local _MoneyService      = nil
-local _LevelService      = nil
-local _PrestigeService   = nil
+local _PlayerDataService           = nil
+local _MoneyService                = nil
+local _LevelService                = nil
+local _PrestigeService             = nil
+local _PlacementService            = nil
+local _GeneratorPlacementService   = nil
 
 -- Users Admin ID
 local ADMIN_USER_IDS = {
@@ -37,11 +39,13 @@ end
 -- Initializes admin service and creates RemoteEvents
 -- @param PlayerDataService: service
 -- @param MoneyService: service
-function AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService)
-	_PlayerDataService = PlayerDataService
-	_MoneyService      = MoneyService
-	_LevelService      = LevelService
-	_PrestigeService   = PrestigeService
+function AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService, PlacementService, GeneratorPlacementService)
+	_PlayerDataService         = PlayerDataService
+	_MoneyService              = MoneyService
+	_LevelService              = LevelService
+	_PrestigeService           = PrestigeService
+	_PlacementService          = PlacementService
+	_GeneratorPlacementService = GeneratorPlacementService
 
 	local adminFolder = ReplicatedStorage.RemoteInterface:WaitForChild("Admin")
 
@@ -118,6 +122,9 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 		if playerData then
 			playerData:AddToInventory(rarity)
 			_PlayerDataService.SavePlayer(target.UserId)
+			if _PlacementService then
+				_PlacementService.GiveSpawnerTool(target, rarity)
+			end
 			print(string.format("✅ Admin %s gave %s spawner to %s", admin.Name, rarity, targetName))
 		end
 
@@ -179,15 +186,34 @@ function AdminService.ExecuteCommand(admin, commandType, targetName, value)
 			warn("Admin: Invalid rarity for brainrot")
 			return
 		end
+		if not _GeneratorPlacementService or not _PlacementService then
+			warn("Admin: PlacementService ou GeneratorPlacementService indisponible")
+			return
+		end
+		local brainrot = _GeneratorPlacementService.GetRandomBrainrot(rarity)
+		if not brainrot then
+			warn("Admin: Aucun brainrot dans la pool pour la rareté:", rarity)
+			return
+		end
 		local playerData = _PlayerDataService.GetPlayerData(target.UserId)
 		if playerData then
-			-- Add a placeholder brainrot entry to brainrotInventory
-			table.insert(playerData.brainrotInventory, {
-				Name   = "Admin_" .. rarity,
-				Rarity = rarity,
-			})
+			_PlayerDataService.AddBrainrot(
+				target.UserId,
+				brainrot.Name,
+				brainrot.ModelName,
+				rarity,
+				brainrot.RevenuePerSecond
+			)
+			_PlacementService.GiveBrainrotTool(
+				target,
+				brainrot.Name,
+				brainrot.ModelName or "",
+				rarity,
+				brainrot.RevenuePerSecond,
+				"Normal"
+			)
 			_PlayerDataService.SavePlayer(target.UserId)
-			print(string.format("✅ Admin %s gave %s brainrot to %s", admin.Name, rarity, targetName))
+			print(string.format("✅ Admin %s gave %s brainrot (%s) to %s", admin.Name, rarity, brainrot.Name, targetName))
 		end
 	end
 end

@@ -2,444 +2,302 @@
 	Client-side admin UI handler
 	Manages admin panel visibility and command execution
 	Only visible to authorized admins
-	
-	Features:
-	- Admin button in HUD (visible only to admins)
-	- Admin panel with player search and autocomplete
-	- Give/Set money commands
-	- Give spawner command
-	- Secure server-side validation
+
+	Layout (640 × 570) :
+	  ┌──────────────────────────────────────────────────────┐
+	  │  ADMIN PANEL                                      [X] │
+	  │  Player:  [__________________________]               │
+	  │           suggestions                                 │
+	  │  Amount:  [__________________________]               │
+	  │           [Give Money]      [Set Money]              │
+	  │  ────────────────────────────────────────────────── │
+	  │  Spawner                  │  Brainrot                │
+	  │  [C][U][R][E][L]          │  [C][U][R][E][L]        │
+	  │  [🎁 Give Spawner       ] │  [🧠 Give Brainrot    ]  │
+	  │  ────────────────────────────────────────────────── │
+	  │  Progression                                         │
+	  │  [Add EXP]   [Set Level]   [Set Prestige]           │
+	  └──────────────────────────────────────────────────────┘
 ]]
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local player = Players.LocalPlayer
+local player            = Players.LocalPlayer
 
--- Wait for RemoteInterface
-local remoteInterface = ReplicatedStorage:WaitForChild("RemoteInterface")
-local adminFolder = remoteInterface:WaitForChild("Admin")
-local isAdminRemote = adminFolder:WaitForChild("IsAdmin")
+local remoteInterface      = ReplicatedStorage:WaitForChild("RemoteInterface")
+local adminFolder          = remoteInterface:WaitForChild("Admin")
+local isAdminRemote        = adminFolder:WaitForChild("IsAdmin")
 local executeCommandRemote = adminFolder:WaitForChild("ExecuteCommand")
 
--- Check if player is admin
-local isAdmin = isAdminRemote:InvokeServer()
-
-if not isAdmin then
+if not isAdminRemote:InvokeServer() then
 	print("Not admin, AdminUI disabled")
 	return
 end
 
--- Get UI elements
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Create AdminUI
-local adminUI = Instance.new("ScreenGui")
-adminUI.Name = "AdminUI"
-adminUI.ResetOnSpawn = false
-adminUI.Parent = playerGui
-adminUI.IgnoreGuiInset = true
+-- ─── Constantes de mise en page ───────────────────────────────────────────────
+local PW   = 640   -- panel width
+local PAD  = 12    -- padding latéral
+local IW   = PW - PAD * 2          -- inner width = 616
+local COLW = math.floor((IW - 16) / 2)  -- colonne = 300  (gap 16 entre les deux)
+local LCOL = PAD                    -- colonne gauche X = 12
+local RCOL = PAD + COLW + 16        -- colonne droite  X = 328
 
--- Admin Button
-local adminButton = Instance.new("ImageButton")
-adminButton.Name = "AdminButton"
-adminButton.Size = UDim2.new(0, 44, 0, 44)
+local RARITY_COLORS_UI = {
+	Common    = Color3.fromRGB(180, 180, 180),
+	Uncommon  = Color3.fromRGB(30,  200, 30),
+	Rare      = Color3.fromRGB(30,  120, 255),
+	Epic      = Color3.fromRGB(160, 60,  200),
+	Legendary = Color3.fromRGB(255, 200, 0),
+}
+local RARITY_DIM = {
+	Common    = Color3.fromRGB(60, 60, 60),
+	Uncommon  = Color3.fromRGB(20, 70, 20),
+	Rare      = Color3.fromRGB(20, 40, 90),
+	Epic      = Color3.fromRGB(60, 20, 80),
+	Legendary = Color3.fromRGB(80, 60, 10),
+}
+local RARITIES = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
+
+-- ─── Helpers ──────────────────────────────────────────────────────────────────
+local function corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 6)
+	c.Parent = parent
+end
+
+local function label(parent, x, y, w, h, text, size, color, bold, alignX)
+	local l = Instance.new("TextLabel")
+	l.Size                   = UDim2.new(0, w, 0, h)
+	l.Position               = UDim2.new(0, x, 0, y)
+	l.BackgroundTransparency = 1
+	l.Text                   = text
+	l.TextSize               = size or 14
+	l.Font                   = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+	l.TextColor3             = color or Color3.fromRGB(255,255,255)
+	l.TextXAlignment         = alignX or Enum.TextXAlignment.Left
+	l.Parent                 = parent
+	return l
+end
+
+local function separator(parent, y)
+	local s = Instance.new("Frame")
+	s.Size            = UDim2.new(0, IW, 0, 1)
+	s.Position        = UDim2.new(0, PAD, 0, y)
+	s.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	s.BorderSizePixel = 0
+	s.Parent          = parent
+end
+
+local function button(parent, x, y, w, h, text, bg, textSize)
+	local b = Instance.new("TextButton")
+	b.Size             = UDim2.new(0, w, 0, h)
+	b.Position         = UDim2.new(0, x, 0, y)
+	b.BackgroundColor3 = bg or Color3.fromRGB(60, 60, 60)
+	b.TextColor3       = Color3.fromRGB(255, 255, 255)
+	b.Text             = text
+	b.Font             = Enum.Font.GothamBold
+	b.TextSize         = textSize or 13
+	b.Parent           = parent
+	corner(b)
+	return b
+end
+
+-- ─── ScreenGui + AdminButton ──────────────────────────────────────────────────
+local adminUI       = Instance.new("ScreenGui")
+adminUI.Name        = "AdminUI"
+adminUI.ResetOnSpawn = false
+adminUI.IgnoreGuiInset = true
+adminUI.Parent      = playerGui
+
+local adminButton   = Instance.new("ImageButton")
+adminButton.Name    = "AdminButton"
+adminButton.Size    = UDim2.new(0, 44, 0, 44)
 adminButton.Position = UDim2.new(0, 172, 0, 12)
 adminButton.BackgroundColor3 = Color3.fromRGB(31, 31, 31)
-adminButton.BorderSizePixel = 0
-adminButton.Image = ""
-adminButton.Parent = adminUI
+adminButton.BorderSizePixel  = 0
+adminButton.Image   = ""
+adminButton.Parent  = adminUI
+corner(adminButton, 22)
 
--- Make it circular
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(1, 0)
-buttonCorner.Parent = adminButton
+local al = Instance.new("TextLabel")
+al.Size = UDim2.new(1,0,1,0); al.BackgroundTransparency=1
+al.Text = "AD"; al.Font = Enum.Font.GothamBold; al.TextSize=18
+al.TextColor3=Color3.fromRGB(255,255,255); al.Parent=adminButton
 
--- Admin text/icon inside
-local adminLabel = Instance.new("TextLabel")
-adminLabel.Size = UDim2.new(1, 0, 1, 0)
-adminLabel.BackgroundTransparency = 1
-adminLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-adminLabel.Text = "AD"
-adminLabel.Font = Enum.Font.GothamBold
-adminLabel.TextSize = 18
-adminLabel.Parent = adminButton
+adminButton.MouseEnter:Connect(function()  adminButton.BackgroundColor3=Color3.fromRGB(51,59,68) end)
+adminButton.MouseLeave:Connect(function() adminButton.BackgroundColor3=Color3.fromRGB(26,31,36) end)
 
--- Hover effect
-adminButton.MouseEnter:Connect(function()
-	adminButton.BackgroundColor3 = Color3.fromRGB(51, 59, 68)
-end)
-
-adminButton.MouseLeave:Connect(function()
-	adminButton.BackgroundColor3 = Color3.fromRGB(26, 31, 36)
-end)
-
--- Admin Panel
+-- ─── Panel principal ──────────────────────────────────────────────────────────
 local adminPanel = Instance.new("Frame")
-adminPanel.Name = "AdminPanel"
-adminPanel.Size = UDim2.new(0, 400, 0, 660)
-adminPanel.Position = UDim2.new(0.5, -200, 0.5, -330)
+adminPanel.Name   = "AdminPanel"
+adminPanel.Size   = UDim2.new(0, PW, 0, 570)
+adminPanel.Position = UDim2.new(0.5, -PW/2, 0.5, -285)
 adminPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 adminPanel.Visible = false
-adminPanel.Parent = adminUI
+adminPanel.Parent  = adminUI
+corner(adminPanel, 12)
 
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 12)
-panelCorner.Parent = adminPanel
+-- Titre + Fermer
+label(adminPanel, PAD, 10, IW-30, 40, "ADMIN PANEL", 20, Color3.fromRGB(255,255,255), true)
 
--- Title
-local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.Size = UDim2.new(1, -20, 0, 40)
-title.Position = UDim2.new(0, 10, 0, 10)
-title.BackgroundTransparency = 1
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Text = "ADMIN PANEL"
-title.Font = Enum.Font.GothamBold
-title.TextSize = 20
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = adminPanel
+local closeBtn = button(adminPanel, PW-42, 10, 30, 30, "X", Color3.fromRGB(200,50,50), 18)
 
--- Close Button
-local closeButton = Instance.new("TextButton")
-closeButton.Name = "CloseButton"
-closeButton.Size = UDim2.new(0, 30, 0, 30)
-closeButton.Position = UDim2.new(1, -40, 0, 10)
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.Text = "X"
-closeButton.Font = Enum.Font.GothamBold
-closeButton.TextSize = 18
-closeButton.Parent = adminPanel
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = closeButton
-
--- Player Search
-local playerLabel = Instance.new("TextLabel")
-playerLabel.Size = UDim2.new(1, -20, 0, 20)
-playerLabel.Position = UDim2.new(0, 10, 0, 60)
-playerLabel.BackgroundTransparency = 1
-playerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-playerLabel.Text = "Player Name:"
-playerLabel.Font = Enum.Font.Gotham
-playerLabel.TextSize = 14
-playerLabel.TextXAlignment = Enum.TextXAlignment.Left
-playerLabel.Parent = adminPanel
+-- ─── Recherche joueur ─────────────────────────────────────────────────────────
+label(adminPanel, PAD, 60, IW, 20, "Player Name:", 14, Color3.fromRGB(200,200,200))
 
 local playerSearch = Instance.new("TextBox")
-playerSearch.Name = "PlayerSearch"
-playerSearch.Size = UDim2.new(1, -20, 0, 35)
-playerSearch.Position = UDim2.new(0, 10, 0, 85)
-playerSearch.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-playerSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+playerSearch.Name   = "PlayerSearch"
+playerSearch.Size   = UDim2.new(0, IW, 0, 35)
+playerSearch.Position = UDim2.new(0, PAD, 0, 85)
+playerSearch.BackgroundColor3 = Color3.fromRGB(50,50,50)
+playerSearch.TextColor3 = Color3.fromRGB(255,255,255)
 playerSearch.PlaceholderText = "Type player name..."
-playerSearch.Text = ""
-playerSearch.Font = Enum.Font.Gotham
+playerSearch.Text   = ""
+playerSearch.Font   = Enum.Font.Gotham
 playerSearch.TextSize = 14
 playerSearch.ClearTextOnFocus = false
 playerSearch.Parent = adminPanel
+corner(playerSearch)
 
-local searchCorner = Instance.new("UICorner")
-searchCorner.CornerRadius = UDim.new(0, 6)
-searchCorner.Parent = playerSearch
-
--- Player Suggestions List
 local suggestionsList = Instance.new("ScrollingFrame")
-suggestionsList.Name = "SuggestionsList"
-suggestionsList.Size = UDim2.new(1, -20, 0, 100)
-suggestionsList.Position = UDim2.new(0, 10, 0, 125)
-suggestionsList.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+suggestionsList.Name  = "SuggestionsList"
+suggestionsList.Size  = UDim2.new(0, IW, 0, 90)
+suggestionsList.Position = UDim2.new(0, PAD, 0, 125)
+suggestionsList.BackgroundColor3 = Color3.fromRGB(40,40,40)
 suggestionsList.ScrollBarThickness = 4
 suggestionsList.Visible = false
-suggestionsList.Parent = adminPanel
+suggestionsList.Parent  = adminPanel
+corner(suggestionsList)
+local sugLayout = Instance.new("UIListLayout")
+sugLayout.SortOrder = Enum.SortOrder.Name
+sugLayout.Padding   = UDim.new(0,2)
+sugLayout.Parent    = suggestionsList
 
-local suggestionsCorner = Instance.new("UICorner")
-suggestionsCorner.CornerRadius = UDim.new(0, 6)
-suggestionsCorner.Parent = suggestionsList
-
-local suggestionsLayout = Instance.new("UIListLayout")
-suggestionsLayout.SortOrder = Enum.SortOrder.Name
-suggestionsLayout.Padding = UDim.new(0, 2)
-suggestionsLayout.Parent = suggestionsList
-
--- Amount Input
-local amountLabel = Instance.new("TextLabel")
-amountLabel.Size = UDim2.new(1, -20, 0, 20)
-amountLabel.Position = UDim2.new(0, 10, 0, 235)
-amountLabel.BackgroundTransparency = 1
-amountLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-amountLabel.Text = "Amount:"
-amountLabel.Font = Enum.Font.Gotham
-amountLabel.TextSize = 14
-amountLabel.TextXAlignment = Enum.TextXAlignment.Left
-amountLabel.Parent = adminPanel
+-- ─── Champ Amount ─────────────────────────────────────────────────────────────
+label(adminPanel, PAD, 225, IW, 20, "Amount:", 14, Color3.fromRGB(200,200,200))
 
 local amountInput = Instance.new("TextBox")
-amountInput.Name = "AmountInput"
-amountInput.Size = UDim2.new(1, -20, 0, 35)
-amountInput.Position = UDim2.new(0, 10, 0, 260)
-amountInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-amountInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+amountInput.Name  = "AmountInput"
+amountInput.Size  = UDim2.new(0, IW, 0, 35)
+amountInput.Position = UDim2.new(0, PAD, 0, 250)
+amountInput.BackgroundColor3 = Color3.fromRGB(50,50,50)
+amountInput.TextColor3 = Color3.fromRGB(255,255,255)
 amountInput.PlaceholderText = "Enter amount..."
-amountInput.Text = ""
-amountInput.Font = Enum.Font.Gotham
+amountInput.Text  = ""
+amountInput.Font  = Enum.Font.Gotham
 amountInput.TextSize = 14
 amountInput.Parent = adminPanel
+corner(amountInput)
 
-local amountCorner = Instance.new("UICorner")
-amountCorner.CornerRadius = UDim.new(0, 6)
-amountCorner.Parent = amountInput
+-- ─── Boutons Money ────────────────────────────────────────────────────────────
+local HALF = math.floor((IW - 8) / 2)   -- 304
+local giveMoneyBtn = button(adminPanel, PAD,         300, HALF, 36, "Give Money", Color3.fromRGB(50,150,50))
+local setMoneyBtn  = button(adminPanel, PAD+HALF+8,  300, HALF, 36, "Set Money",  Color3.fromRGB(50,100,200))
 
--- Give Money Button
-local giveMoneyButton = Instance.new("TextButton")
-giveMoneyButton.Name = "GiveMoneyButton"
-giveMoneyButton.Size = UDim2.new(0.48, 0, 0, 40)
-giveMoneyButton.Position = UDim2.new(0, 10, 0, 310)
-giveMoneyButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-giveMoneyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-giveMoneyButton.Text = "Give Money"
-giveMoneyButton.Font = Enum.Font.GothamBold
-giveMoneyButton.TextSize = 14
-giveMoneyButton.Parent = adminPanel
+-- ─── Séparateur ───────────────────────────────────────────────────────────────
+separator(adminPanel, 348)
 
-local giveMoneyCorner = Instance.new("UICorner")
-giveMoneyCorner.CornerRadius = UDim.new(0, 6)
-giveMoneyCorner.Parent = giveMoneyButton
+-- ─── Spawner (colonne gauche) + Brainrot (colonne droite) ─────────────────────
+-- Titres des colonnes
+label(adminPanel, LCOL, 356, COLW, 20, "Spawner",  14, Color3.fromRGB(200,160,255), true)
+label(adminPanel, RCOL, 356, COLW, 20, "Brainrot", 14, Color3.fromRGB(255,160,60),  true)
 
--- Set Money Button
-local setMoneyButton = Instance.new("TextButton")
-setMoneyButton.Name = "SetMoneyButton"
-setMoneyButton.Size = UDim2.new(0.48, 0, 0, 40)
-setMoneyButton.Position = UDim2.new(0.52, 0, 0, 310)
-setMoneyButton.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
-setMoneyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-setMoneyButton.Text = "Set Money"
-setMoneyButton.Font = Enum.Font.GothamBold
-setMoneyButton.TextSize = 14
-setMoneyButton.Parent = adminPanel
+-- Boutons de rareté : 5 par colonne
+local RBTN_W  = math.floor((COLW - 4*3) / 5)   -- ~57px
+local RBTN_ST = RBTN_W + 3                       -- stride = 60
 
-local setMoneyCorner = Instance.new("UICorner")
-setMoneyCorner.CornerRadius = UDim.new(0, 6)
-setMoneyCorner.Parent = setMoneyButton
+local spawnerRarityBtns  = {}
+local brainrotRarityBtns = {}
+local selectedSpawnerRarity  = "Common"
+local selectedBrainrotRarity = "Common"
 
--- Spawner Rarity Dropdown
-local rarityLabel = Instance.new("TextLabel")
-rarityLabel.Size = UDim2.new(1, -20, 0, 20)
-rarityLabel.Position = UDim2.new(0, 10, 0, 365)
-rarityLabel.BackgroundTransparency = 1
-rarityLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-rarityLabel.Text = "Spawner Rarity:"
-rarityLabel.Font = Enum.Font.Gotham
-rarityLabel.TextSize = 14
-rarityLabel.TextXAlignment = Enum.TextXAlignment.Left
-rarityLabel.Parent = adminPanel
+for i, rar in ipairs(RARITIES) do
+	local ox = (i-1) * RBTN_ST  -- offset within column
 
-local rarityButtons = {}
-local rarities = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
-local selectedRarity = "Common"
+	local sb = button(adminPanel, LCOL + ox, 380, RBTN_W, 30, rar, RARITY_DIM[rar], 10)
+	spawnerRarityBtns[rar] = sb
 
-local rarityCount = #rarities
-for i, rarity in ipairs(rarities) do
-	local btn = Instance.new("TextButton")
-	btn.Name = rarity .. "Button"
-	btn.Size = UDim2.new(1 / rarityCount - 0.01, 0, 0, 30)
-	btn.Position = UDim2.new((i-1) / rarityCount + 0.005, 0, 0, 390)
-	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Text = rarity
-	btn.Font = Enum.Font.Gotham
-	btn.TextSize = 11
-	btn.Parent = adminPanel
-
-	local btnCorner = Instance.new("UICorner")
-	btnCorner.CornerRadius = UDim.new(0, 6)
-	btnCorner.Parent = btn
-
-	rarityButtons[rarity] = btn
+	local bb = button(adminPanel, RCOL + ox, 380, RBTN_W, 30, rar, RARITY_DIM[rar], 10)
+	brainrotRarityBtns[rar] = bb
 end
 
--- Give Spawner Button
-local giveSpawnerButton = Instance.new("TextButton")
-giveSpawnerButton.Name = "GiveSpawnerButton"
-giveSpawnerButton.Size = UDim2.new(1, -20, 0, 40)
-giveSpawnerButton.Position = UDim2.new(0, 10, 0, 435)
-giveSpawnerButton.BackgroundColor3 = Color3.fromRGB(150, 50, 200)
-giveSpawnerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-giveSpawnerButton.Text = "🎁 Give Spawner"
-giveSpawnerButton.Font = Enum.Font.GothamBold
-giveSpawnerButton.TextSize = 14
-giveSpawnerButton.Parent = adminPanel
+local giveSpawnerBtn  = button(adminPanel, LCOL, 416, COLW, 36, "🎁 Give Spawner", Color3.fromRGB(120,50,180), 14)
+local giveBrainrotBtn = button(adminPanel, RCOL, 416, COLW, 36, "🧠 Give Brainrot", Color3.fromRGB(180,100,20), 14)
 
-local giveSpawnerCorner = Instance.new("UICorner")
-giveSpawnerCorner.CornerRadius = UDim.new(0, 6)
-giveSpawnerCorner.Parent = giveSpawnerButton
+-- ─── Séparateur ───────────────────────────────────────────────────────────────
+separator(adminPanel, 464)
 
--- ─── Section Progression ─────────────────────────────────────────────────────
-local progSep = Instance.new("Frame")
-progSep.Name = "ProgSeparator"
-progSep.Size = UDim2.new(1, -20, 0, 1)
-progSep.Position = UDim2.new(0, 10, 0, 490)
-progSep.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-progSep.BorderSizePixel = 0
-progSep.Parent = adminPanel
+-- ─── Progression ──────────────────────────────────────────────────────────────
+label(adminPanel, PAD, 472, IW, 20, "Progression", 14, Color3.fromRGB(180,180,255), true)
 
-local progTitle = Instance.new("TextLabel")
-progTitle.Size = UDim2.new(1, -20, 0, 20)
-progTitle.Position = UDim2.new(0, 10, 0, 498)
-progTitle.BackgroundTransparency = 1
-progTitle.TextColor3 = Color3.fromRGB(180, 180, 255)
-progTitle.Text = "Progression"
-progTitle.Font = Enum.Font.GothamBold
-progTitle.TextSize = 14
-progTitle.TextXAlignment = Enum.TextXAlignment.Left
-progTitle.Parent = adminPanel
+local PBTN_W = math.floor((IW - 2*8) / 3)   -- ~200px
+local addExpBtn      = button(adminPanel, PAD,              496, PBTN_W, 36, "Add EXP",     Color3.fromRGB(30,140,80))
+local setLevelBtn    = button(adminPanel, PAD+PBTN_W+8,     496, PBTN_W, 36, "Set Level",   Color3.fromRGB(30,80,160))
+local setPrestigeBtn = button(adminPanel, PAD+(PBTN_W+8)*2, 496, PBTN_W, 36, "Set Prestige",Color3.fromRGB(120,30,160))
 
--- Add EXP button
-local addExpButton = Instance.new("TextButton")
-addExpButton.Name = "AddExpButton"
-addExpButton.Size = UDim2.new(0.48, 0, 0, 36)
-addExpButton.Position = UDim2.new(0, 10, 0, 523)
-addExpButton.BackgroundColor3 = Color3.fromRGB(30, 140, 80)
-addExpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-addExpButton.Text = "Add EXP"
-addExpButton.Font = Enum.Font.GothamBold
-addExpButton.TextSize = 13
-addExpButton.Parent = adminPanel
-Instance.new("UICorner", addExpButton).CornerRadius = UDim.new(0, 6)
+label(adminPanel, PAD, 542, IW, 18,
+	"Amount = EXP / Level / Prestige   •   Rarity = Rareté Spawner / Brainrot",
+	10, Color3.fromRGB(140,140,140))
 
--- Set Level button
-local setLevelButton = Instance.new("TextButton")
-setLevelButton.Name = "SetLevelButton"
-setLevelButton.Size = UDim2.new(0.48, 0, 0, 36)
-setLevelButton.Position = UDim2.new(0.52, 0, 0, 523)
-setLevelButton.BackgroundColor3 = Color3.fromRGB(30, 80, 160)
-setLevelButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-setLevelButton.Text = "Set Level"
-setLevelButton.Font = Enum.Font.GothamBold
-setLevelButton.TextSize = 13
-setLevelButton.Parent = adminPanel
-Instance.new("UICorner", setLevelButton).CornerRadius = UDim.new(0, 6)
-
--- Set Prestige button
-local setPrestigeButton = Instance.new("TextButton")
-setPrestigeButton.Name = "SetPrestigeButton"
-setPrestigeButton.Size = UDim2.new(0.48, 0, 0, 36)
-setPrestigeButton.Position = UDim2.new(0, 10, 0, 567)
-setPrestigeButton.BackgroundColor3 = Color3.fromRGB(120, 30, 160)
-setPrestigeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-setPrestigeButton.Text = "Set Prestige"
-setPrestigeButton.Font = Enum.Font.GothamBold
-setPrestigeButton.TextSize = 13
-setPrestigeButton.Parent = adminPanel
-Instance.new("UICorner", setPrestigeButton).CornerRadius = UDim.new(0, 6)
-
--- Give Brainrot button (uses selectedRarity from rarity selector above)
-local giveBrainrotButton = Instance.new("TextButton")
-giveBrainrotButton.Name = "GiveBrainrotButton"
-giveBrainrotButton.Size = UDim2.new(0.48, 0, 0, 36)
-giveBrainrotButton.Position = UDim2.new(0.52, 0, 0, 567)
-giveBrainrotButton.BackgroundColor3 = Color3.fromRGB(180, 100, 20)
-giveBrainrotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-giveBrainrotButton.Text = "Give Brainrot"
-giveBrainrotButton.Font = Enum.Font.GothamBold
-giveBrainrotButton.TextSize = 13
-giveBrainrotButton.Parent = adminPanel
-Instance.new("UICorner", giveBrainrotButton).CornerRadius = UDim.new(0, 6)
-
-local progNote = Instance.new("TextLabel")
-progNote.Size = UDim2.new(1, -20, 0, 18)
-progNote.Position = UDim2.new(0, 10, 0, 613)
-progNote.BackgroundTransparency = 1
-progNote.TextColor3 = Color3.fromRGB(140, 140, 140)
-progNote.Text = "Amount = EXP / Level / Prestige  •  Rarity = Brainrot rarity"
-progNote.Font = Enum.Font.Gotham
-progNote.TextSize = 10
-progNote.TextXAlignment = Enum.TextXAlignment.Left
-progNote.TextWrapped = true
-progNote.Parent = adminPanel
-
--- Local state
+-- ─── État local ───────────────────────────────────────────────────────────────
 local selectedPlayer = nil
 
--- Updates player suggestions based on search
+local function updateSpawnerRarity(r)
+	selectedSpawnerRarity = r
+	for k, btn in pairs(spawnerRarityBtns) do
+		btn.BackgroundColor3 = (k == r) and RARITY_COLORS_UI[k] or RARITY_DIM[k]
+	end
+end
+
+local function updateBrainrotRarity(r)
+	selectedBrainrotRarity = r
+	for k, btn in pairs(brainrotRarityBtns) do
+		btn.BackgroundColor3 = (k == r) and RARITY_COLORS_UI[k] or RARITY_DIM[k]
+	end
+end
+
+updateSpawnerRarity("Common")
+updateBrainrotRarity("Common")
+
 local function updateSuggestions(searchText)
-	-- Clear existing suggestions
-	for _, child in ipairs(suggestionsList:GetChildren()) do
-		if child:IsA("TextButton") then
-			child:Destroy()
-		end
+	for _, c in ipairs(suggestionsList:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
 	end
+	if searchText == "" then suggestionsList.Visible = false return end
 
-	if searchText == "" then
-		suggestionsList.Visible = false
-		return
-	end
-
-	-- Find matching players
 	local matches = {}
-	searchText = searchText:lower()
-
+	local low = searchText:lower()
 	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Name:lower():find(searchText, 1, true) then
-			table.insert(matches, p.Name)
-		end
+		if p.Name:lower():find(low, 1, true) then table.insert(matches, p.Name) end
 	end
+	if #matches == 0 then suggestionsList.Visible = false return end
 
-	if #matches == 0 then
-		suggestionsList.Visible = false
-		return
-	end
-
-	-- Create suggestion buttons
-	for _, playerName in ipairs(matches) do
-		local suggestionBtn = Instance.new("TextButton")
-		suggestionBtn.Name = playerName
-		suggestionBtn.Size = UDim2.new(1, -8, 0, 30)
-		suggestionBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-		suggestionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		suggestionBtn.Text = playerName
-		suggestionBtn.Font = Enum.Font.Gotham
-		suggestionBtn.TextSize = 13
-		suggestionBtn.Parent = suggestionsList
-
-		local suggestionCorner = Instance.new("UICorner")
-		suggestionCorner.CornerRadius = UDim.new(0, 4)
-		suggestionCorner.Parent = suggestionBtn
-
-		suggestionBtn.MouseButton1Click:Connect(function()
-			playerSearch.Text = playerName
-			selectedPlayer = playerName
+	for _, pname in ipairs(matches) do
+		local b = Instance.new("TextButton")
+		b.Name = pname
+		b.Size = UDim2.new(1,-8,0,30)
+		b.BackgroundColor3 = Color3.fromRGB(50,50,50)
+		b.TextColor3 = Color3.fromRGB(255,255,255)
+		b.Text = pname; b.Font = Enum.Font.Gotham; b.TextSize = 13
+		b.Parent = suggestionsList
+		corner(b, 4)
+		b.MouseButton1Click:Connect(function()
+			playerSearch.Text = pname
+			selectedPlayer = pname
 			suggestionsList.Visible = false
 		end)
 	end
-
-	suggestionsList.CanvasSize = UDim2.new(0, 0, 0, #matches * 32)
+	suggestionsList.CanvasSize = UDim2.new(0,0,0,#matches*32)
 	suggestionsList.Visible = true
 end
 
--- Updates rarity button colors
-local function updateRaritySelection(rarity)
-	selectedRarity = rarity
-
-	for r, btn in pairs(rarityButtons) do
-		if r == rarity then
-			btn.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
-		else
-			btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		end
-	end
-end
-
--- Initialize Common as selected
-updateRaritySelection("Common")
-
--- Connect events
+-- ─── Events ───────────────────────────────────────────────────────────────────
 adminButton.MouseButton1Click:Connect(function()
 	adminPanel.Visible = not adminPanel.Visible
 end)
-
-closeButton.MouseButton1Click:Connect(function()
+closeBtn.MouseButton1Click:Connect(function()
 	adminPanel.Visible = false
 end)
 
@@ -448,78 +306,56 @@ playerSearch:GetPropertyChangedSignal("Text"):Connect(function()
 	selectedPlayer = playerSearch.Text
 end)
 
-for rarity, btn in pairs(rarityButtons) do
-	btn.MouseButton1Click:Connect(function()
-		updateRaritySelection(rarity)
-	end)
+for r, btn in pairs(spawnerRarityBtns) do
+	btn.MouseButton1Click:Connect(function() updateSpawnerRarity(r) end)
+end
+for r, btn in pairs(brainrotRarityBtns) do
+	btn.MouseButton1Click:Connect(function() updateBrainrotRarity(r) end)
 end
 
-giveMoneyButton.MouseButton1Click:Connect(function()
-	local amount = tonumber(amountInput.Text)
-	if not selectedPlayer or selectedPlayer == "" then
-		warn("No player selected")
-		return
-	end
-	if not amount or amount <= 0 then
-		warn("Invalid amount")
-		return
-	end
-
-	executeCommandRemote:FireServer("GiveMoney", selectedPlayer, amount)
-	print("Gave", amount, "$ to", selectedPlayer)
+giveMoneyBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	local a = tonumber(amountInput.Text)
+	if not a or a<=0 then warn("Invalid amount") return end
+	executeCommandRemote:FireServer("GiveMoney", selectedPlayer, a)
 end)
 
-setMoneyButton.MouseButton1Click:Connect(function()
-	local amount = tonumber(amountInput.Text)
-	if not selectedPlayer or selectedPlayer == "" then
-		warn("No player selected")
-		return
-	end
-	if not amount or amount < 0 then
-		warn("Invalid amount")
-		return
-	end
-
-	executeCommandRemote:FireServer("SetMoney", selectedPlayer, amount)
-	print("Set", selectedPlayer, "money to", amount)
+setMoneyBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	local a = tonumber(amountInput.Text)
+	if not a or a<0 then warn("Invalid amount") return end
+	executeCommandRemote:FireServer("SetMoney", selectedPlayer, a)
 end)
 
-giveSpawnerButton.MouseButton1Click:Connect(function()
-	if not selectedPlayer or selectedPlayer == "" then
-		warn("No player selected")
-		return
-	end
-
-	executeCommandRemote:FireServer("GiveSpawner", selectedPlayer, selectedRarity)
-	print("Gave", selectedRarity, "spawner to", selectedPlayer)
+giveSpawnerBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	executeCommandRemote:FireServer("GiveSpawner", selectedPlayer, selectedSpawnerRarity)
+	print("Gave", selectedSpawnerRarity, "spawner to", selectedPlayer)
 end)
 
-addExpButton.MouseButton1Click:Connect(function()
-	local amount = tonumber(amountInput.Text)
-	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
-	if not amount or amount <= 0 then warn("Invalid amount") return end
-	executeCommandRemote:FireServer("AddExp", selectedPlayer, amount)
-	print("Added", amount, "EXP to", selectedPlayer)
+giveBrainrotBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	executeCommandRemote:FireServer("GiveBrainrot", selectedPlayer, selectedBrainrotRarity)
+	print("Gave", selectedBrainrotRarity, "brainrot to", selectedPlayer)
 end)
 
-setLevelButton.MouseButton1Click:Connect(function()
-	local level = tonumber(amountInput.Text)
-	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
-	if not level or level < 1 then warn("Invalid level") return end
-	executeCommandRemote:FireServer("SetLevel", selectedPlayer, level)
-	print("Set", selectedPlayer, "to level", level)
+addExpBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	local a = tonumber(amountInput.Text)
+	if not a or a<=0 then warn("Invalid amount") return end
+	executeCommandRemote:FireServer("AddExp", selectedPlayer, a)
 end)
 
-setPrestigeButton.MouseButton1Click:Connect(function()
-	local prestige = tonumber(amountInput.Text)
-	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
-	if not prestige or prestige < 0 then warn("Invalid prestige") return end
-	executeCommandRemote:FireServer("SetPrestige", selectedPlayer, prestige)
-	print("Set", selectedPlayer, "prestige to", prestige)
+setLevelBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	local l = tonumber(amountInput.Text)
+	if not l or l<1 then warn("Invalid level") return end
+	executeCommandRemote:FireServer("SetLevel", selectedPlayer, l)
 end)
 
-giveBrainrotButton.MouseButton1Click:Connect(function()
-	if not selectedPlayer or selectedPlayer == "" then warn("No player selected") return end
-	executeCommandRemote:FireServer("GiveBrainrot", selectedPlayer, selectedRarity)
-	print("Gave", selectedRarity, "brainrot to", selectedPlayer)
+setPrestigeBtn.MouseButton1Click:Connect(function()
+	if not selectedPlayer or selectedPlayer=="" then warn("No player selected") return end
+	local p = tonumber(amountInput.Text)
+	if not p or p<0 then warn("Invalid prestige") return end
+	executeCommandRemote:FireServer("SetPrestige", selectedPlayer, p)
 end)
