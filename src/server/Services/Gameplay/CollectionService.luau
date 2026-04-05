@@ -68,6 +68,7 @@ function CollectionService.OnToyCollected(toy)
 
 	CollectionService.IncrementQuota(userId, rarity)
 	CollectionService.CheckQuotaComplete(userId, rarity)
+	LevelService.AddExp(userId, 1)
 
 	CollectionService.DestroyToy(toy)
 end
