@@ -91,8 +91,20 @@ local GeneratorPlacementService = require(script.Parent.Parent.Services.Gameplay
 local ShopService = require(script.Parent.Parent.Services.Economy.ShopService)
 
 -- ─── Import progression services ────────────────────────────────────────────
-local LevelService   = require(script.Parent.Parent.Services.Progression.LevelService)
+local LevelService    = require(script.Parent.Parent.Services.Progression.LevelService)
 local PrestigeService = require(script.Parent.Parent.Services.Progression.PrestigeService)
+
+-- FloorService chargé de façon défensive : s'il échoue, le reste du serveur
+-- continue à fonctionner normalement (admin panel, shop, etc.)
+local FloorService = nil
+do
+	local ok, result = pcall(require, script.Parent.Parent.Services.Progression.FloorService)
+	if ok then
+		FloorService = result
+	else
+		warn("❌ [FloorService] Échec du chargement :", result)
+	end
+end
 
 -- ─── Import handlers ────────────────────────────────────────────────────────
 local PlayerLifecycleHandler   = require(script.Parent.Parent.Handlers.PlayerLifecycleHandler)
@@ -134,12 +146,13 @@ safeInit("ShopService", function() ShopService.Init(SpawnerConfig, MoneyService,
 
 -- ─── Progression ─────────────────────────────────────────────────────────────
 safeInit("LevelService",    function() LevelService.Init(PlayerDataService) end)
-safeInit("PrestigeService", function() PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig) end)
-safeInit("AdminService",    function() AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService) end)
+safeInit("FloorService",    function() FloorService.Init(PlayerDataService) end)
+safeInit("PrestigeService", function() PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig, FloorService) end)
+safeInit("AdminService",    function() AdminService.Init(PlayerDataService, MoneyService, LevelService, PrestigeService, PlacementService, GeneratorPlacementService) end)
 
 -- ─── Handlers ────────────────────────────────────────────────────────────────
 safeInit("PlayerLifecycleHandler", function()
-	PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
+	PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService, FloorService)
 end)
 safeInit("RemoteFunctionHandler", function()
 	RemoteFunctionHandler.Init(ShopService, PlacementService, PlayerDataService)

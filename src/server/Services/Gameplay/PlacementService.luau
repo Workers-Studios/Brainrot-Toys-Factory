@@ -41,6 +41,59 @@ function PlacementService.Init(PlayerDataService, SpawnerService, SpawnerConfig)
 	print("PlacementService initialized")
 end
 
+-- Initialise les slots spawner depuis un plot donné directement (utilisé pour les étages)
+-- Même logique que InitializePlotSlots mais sans passer par PlotService
+-- @param userId : number
+-- @param plot   : Model - Le plot d'étage à initialiser
+function PlacementService.InitializeSlotsFromPlot(userId, plot)
+	local slotsFolder = plot:FindFirstChild("SpawnerSlots")
+	if not slotsFolder then
+		warn("SpawnerSlots not found in floor plot for userId:", userId)
+		return
+	end
+
+	for _, slot in ipairs(slotsFolder:GetChildren()) do
+		local slotPart        = nil
+		local proximityPrompt = nil
+
+		if slot:IsA("Model") and slot.PrimaryPart then
+			slotPart        = slot.PrimaryPart
+			proximityPrompt = slotPart:FindFirstChildOfClass("ProximityPrompt")
+		elseif slot:IsA("BasePart") then
+			slotPart        = slot
+			proximityPrompt = slot:FindFirstChildOfClass("ProximityPrompt")
+		else
+			continue
+		end
+
+		if not proximityPrompt then
+			warn("⚠️ No ProximityPrompt found in", slot.Name)
+			continue
+		end
+
+		local slotKey = userId .. "_" .. slot.Name
+
+		_slots[slotKey] = {
+			Model               = slot,
+			Part                = slotPart,
+			ProximityPrompt     = proximityPrompt,
+			PlacementConnection = nil,
+			PickupConnection    = nil,
+			Occupied            = false,
+			SpawnerPart         = nil,
+			UserId              = userId,
+		}
+
+		_slots[slotKey].PlacementConnection = proximityPrompt.Triggered:Connect(function(player)
+			if player.UserId == userId then
+				PlacementService.OnSlotTriggered(player, slot)
+			end
+		end)
+	end
+
+	print("Initialized", #slotsFolder:GetChildren(), "spawner slots for floor plot", userId)
+end
+
 -- Initializes spawner slots for a specific player's plot
 -- @param userId: number - Player's user ID
 function PlacementService.InitializePlotSlots(userId)
@@ -110,10 +163,14 @@ function PlacementService.GetEquippedSpawnerRarity(player)
 	local function isSpawnerTool(tool)
 		if not tool:IsA("Tool") then return false end
 		if tool:GetAttribute("SpawnerRarity") then return true end
-		return VALID_RARITIES[tool.Name] == true
+		return tool.Name:sub(1, 8) == "spawner_"
 	end
 	local function getRarity(tool)
-		return tool:GetAttribute("SpawnerRarity") or tool.Name
+		local attr = tool:GetAttribute("SpawnerRarity")
+		if attr then return attr end
+		local suffix = tool.Name:match("^spawner_(.+)$")
+		if suffix then return suffix:sub(1,1):upper() .. suffix:sub(2) end
+		return tool.Name
 	end
 
 	if player.Character then
@@ -136,19 +193,21 @@ local SPAWNER_RARITY_COLORS = {
 
 -- Donne un Tool spawner au backpack du joueur (template Studio ou création par code)
 function PlacementService.GiveSpawnerTool(player, rarity)
+	local toolName = "spawner_" .. rarity:lower()
+
 	-- Essayer le template Studio en priorité
 	local spawnerTools = ServerStorage:FindFirstChild("SpawnerTools")
-	local toolTemplate = spawnerTools and spawnerTools:FindFirstChild(rarity)
+	local toolTemplate = spawnerTools and spawnerTools:FindFirstChild(toolName)
 	if toolTemplate then
 		local tool = toolTemplate:Clone()
-		tool.Name   = rarity
+		tool.Name   = toolName
 		tool.Parent = player.Backpack
 		return
 	end
 
 	-- Fallback : créer le Tool entièrement par code
 	local tool = Instance.new("Tool")
-	tool.Name        = rarity
+	tool.Name        = toolName
 	tool.ToolTip     = rarity .. " Spawner"
 	tool.RequiresHandle = true
 	tool:SetAttribute("SpawnerRarity", rarity)
@@ -165,14 +224,15 @@ end
 
 -- Supprime le tool spawner de la main ou du backpack du joueur
 function PlacementService.RemoveSpawnerTool(player, rarity)
+	local toolName = "spawner_" .. rarity:lower()
 	if player.Character then
-		local tool = player.Character:FindFirstChild(rarity)
+		local tool = player.Character:FindFirstChild(toolName)
 		if tool and tool:IsA("Tool") then
 			tool:Destroy()
 			return
 		end
 	end
-	local tool = player.Backpack:FindFirstChild(rarity)
+	local tool = player.Backpack:FindFirstChild(toolName)
 	if tool and tool:IsA("Tool") then
 		tool:Destroy()
 	end
@@ -369,7 +429,7 @@ function PlacementService.CreateSpawnerPart(rarity, slotPart)
 
 	-- Cloner le modèle visuel depuis le Tool dans ServerStorage
 	local toolTemplate = ServerStorage:FindFirstChild("SpawnerTools") and
-		ServerStorage.SpawnerTools:FindFirstChild(rarity)
+		ServerStorage.SpawnerTools:FindFirstChild("spawner_" .. rarity:lower())
 
 	if toolTemplate then
 		-- Chercher le Model visuel dans le Tool (tout sauf Handle)
@@ -495,13 +555,58 @@ function PlacementService.GiveBrainrotTool(player, brainrotName, modelName, rari
 	tool:SetAttribute("BrainrotVariant",  variant or "Normal")
 	tool:SetAttribute("Count",            1)
 
+	-- Handle invisible minimaliste (point d'attache main)
 	local handle = Instance.new("Part")
-	handle.Name      = "Handle"
-	handle.Size      = Vector3.new(1, 1, 1)
-	handle.Color     = EGG_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
-	handle.CanCollide = false
-	handle.Massless   = true
-	handle.Parent     = tool
+	handle.Name         = "Handle"
+	handle.Size         = Vector3.new(0.1, 0.1, 0.1)
+	handle.Transparency = 1
+	handle.CanCollide   = false
+	handle.Massless     = true
+	handle.Parent       = tool
+
+	-- Tenter d'attacher le vrai modèle du brainrot
+	local attachedModel = false
+	local brainrotModels = ServerStorage:FindFirstChild("BrainrotModels")
+	local tierFolder     = brainrotModels and brainrotModels:FindFirstChild(rarity)
+	local nameToUse      = modelName ~= "" and modelName or brainrotName
+	local brainrotFolder = tierFolder and tierFolder:FindFirstChild(nameToUse)
+	if brainrotFolder then
+		local variantUsed   = (not variant or variant == "Normal") and nameToUse or (variant .. " " .. nameToUse)
+		local template      = brainrotFolder:FindFirstChild(variantUsed) or brainrotFolder:GetChildren()[1]
+		if template and template:IsA("Model") then
+			local clone = template:Clone()
+			-- Nettoyer les éléments non physiques
+			for _, desc in ipairs(clone:GetDescendants()) do
+				if desc:IsA("BillboardGui") or desc:IsA("ProximityPrompt") or desc:IsA("SpecialMesh") then
+					desc:Destroy()
+				end
+			end
+			-- Centrer sur l'origine puis souder chaque Part au Handle
+			if clone.PrimaryPart then
+				clone:PivotTo(CFrame.new())
+			end
+			for _, part in ipairs(clone:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Anchored   = false
+					part.CanCollide = false
+					part.Massless   = true
+					local weld      = Instance.new("WeldConstraint")
+					weld.Part0      = handle
+					weld.Part1      = part
+					weld.Parent     = handle
+				end
+			end
+			clone.Parent  = tool
+			attachedModel = true
+		end
+	end
+
+	-- Fallback : cube coloré si modèle introuvable
+	if not attachedModel then
+		handle.Size         = Vector3.new(1, 1, 1)
+		handle.Transparency = 0
+		handle.Color        = EGG_COLORS[rarity] or Color3.fromRGB(200, 200, 200)
+	end
 
 	tool.Parent = player.Backpack
 end

@@ -30,14 +30,16 @@ local ToyConfig = require(script.Parent.Parent.Config.ToyConfig)
 
 -- Private references
 local _PlayerDataService = nil
-local _GeneratorService = nil
+local _GeneratorService  = nil
+local _FloorService      = nil
 
 -- Initializes handler and connects to player events
 -- @param PlayerDataService: service - Player data management service
 -- @param GeneratorService: service - Generator management service
-function PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService)
+function PlayerLifecycleHandler.Init(PlayerDataService, GeneratorService, FloorService)
 	_PlayerDataService = PlayerDataService
-	_GeneratorService = GeneratorService
+	_GeneratorService  = GeneratorService
+	_FloorService      = FloorService
 
 	Players.PlayerAdded:Connect(PlayerLifecycleHandler.OnPlayerAdded)
 	Players.PlayerRemoving:Connect(PlayerLifecycleHandler.OnPlayerRemoving)
@@ -193,6 +195,17 @@ function PlayerLifecycleHandler.OnPlayerAdded(player)
 		warn("Error initializing conveyors:", err3)
 	end
 
+	-- ⭐ RESTAURER LES ÉTAGES (avant RestorePlacedSpawners/Generators)
+	-- Les slots d'étage (F1_Slot…) doivent être enregistrés AVANT la restauration
+	if _FloorService then
+		local successF, errF = pcall(function()
+			_FloorService.RestoreFloors(userId)
+		end)
+		if not successF then
+			warn("Error restoring floors:", errF)
+		end
+	end
+
 	-- ⭐ REDONNER LES TOOLS SPAWNER ET OEUFS DE L'INVENTAIRE
 	task.spawn(function()
 		local playerData = _PlayerDataService.GetPlayerData(userId)
@@ -261,8 +274,13 @@ function PlayerLifecycleHandler.OnPlayerRemoving(player)
 	-- Remove from memory
 	_PlayerDataService.RemovePlayer(userId)
 
-	-- ⭐ REMOVE PLOT
+	-- ⭐ REMOVE PLOT (base)
 	PlotService.RemovePlot(userId)
+
+	-- ⭐ REMOVE FLOOR PLOTS
+	if _FloorService then
+		_FloorService.RemoveFloors(userId)
+	end
 
 	print("❌ Player disconnected:", player.Name)
 end

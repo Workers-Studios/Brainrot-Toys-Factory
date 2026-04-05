@@ -37,8 +37,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PrestigeConfig    = require(ReplicatedStorage.Shared.PrestigeConfig)
 local LevelConfig       = require(ReplicatedStorage.Shared.LevelConfig)
 
+-- FloorConfig chargé de façon défensive (fichier peut ne pas encore être synchronisé)
+local FloorConfig = nil
+do
+	local mod = ReplicatedStorage.Shared:FindFirstChild("FloorConfig")
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then FloorConfig = result end
+	end
+end
+
 local _PlayerDataService  = nil
 local _PlacementService   = nil
+local _FloorService       = nil
 local _ToyConfig          = nil
 local _onPrestigeChanged  = nil  -- RemoteEvent → client
 local _onNotification     = nil  -- RemoteEvent → client (notification toast)
@@ -47,9 +58,10 @@ local _onQuotaUpdated     = nil  -- RemoteEvent → client (reset quota UI aprè
 
 -- ─── Initialisation ──────────────────────────────────────────────────────────
 
-function PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig)
+function PrestigeService.Init(PlayerDataService, PlacementService, ToyConfig, FloorService)
 	_PlayerDataService = PlayerDataService
 	_PlacementService  = PlacementService
+	_FloorService      = FloorService
 	_ToyConfig         = ToyConfig
 
 	local RI = ReplicatedStorage:WaitForChild("RemoteInterface")
@@ -173,6 +185,16 @@ function PrestigeService.DoPrestige(userId)
 		-- Note : le level cap est levé — géré par LevelService qui vérifie isMasterPrestige
 	else
 		playerData.prestigeLevel = playerData.prestigeLevel + 1
+	end
+
+	-- ─── 4.5 Débloquer un étage si le nouveau prestige le permet ─────────────
+	if not isMasterRequest and _FloorService and FloorConfig then
+		local newPrestige = playerData.prestigeLevel
+		if FloorConfig.Floors[newPrestige] then
+			task.spawn(function()
+				_FloorService.UnlockFloor(userId, newPrestige)
+			end)
+		end
 	end
 
 	-- ─── 5. Sauvegarder ──────────────────────────────────────────────────────

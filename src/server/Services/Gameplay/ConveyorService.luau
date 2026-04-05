@@ -112,6 +112,67 @@ function ConveyorService.InitializePlotConveyors(userId)
 	print("Initialized", count, "conveyor segments for plot", userId)
 end
 
+-- Ajoute les convoyeurs d'un étage au heartbeat existant du joueur
+-- Appelé par FloorService après InitializePlotConveyors (qui démarre le heartbeat)
+-- @param userId : number
+-- @param plot   : Model - Le plot d'étage
+function ConveyorService.AppendPlotConveyors(userId, plot)
+	if not _segments[userId] then
+		_segments[userId] = {}
+	end
+
+	local conveyorsFolder = plot:FindFirstChild("Conveyors")
+	if not conveyorsFolder then
+		warn("Conveyors not found in floor plot for userId:", userId)
+		return
+	end
+
+	local count = 0
+
+	for _, segment in ipairs(conveyorsFolder:GetDescendants()) do
+		if not segment:IsA("BasePart") or not segment.Name:match("Segment") then
+			continue
+		end
+
+		local direction = (segment.CFrame * CFrame.Angles(0, math.rad(270), 0)).LookVector
+		local segNum    = tonumber(segment.Name:match("%d+")) or 0
+		local expand    = (segNum == 8) and 0 or EXPAND_BONUS
+
+		table.insert(_segments[userId], {
+			Part      = segment,
+			Direction = direction,
+			Expand    = expand,
+			Num       = segNum,
+		})
+		count += 1
+
+		segment.CanCollide = true
+	end
+
+	-- Re-trier avec les nouveaux segments mélangés aux anciens
+	table.sort(_segments[userId], function(a, b)
+		return a.Num > b.Num
+	end)
+
+	-- Connecter la CollectionZone de l'étage
+	local collection = plot:FindFirstChild("Collection")
+	if collection then
+		local collectionZone = collection:FindFirstChild("CollectionZone")
+		if collectionZone then
+			collectionZone.Touched:Connect(function(hit)
+				if hit:IsA("BasePart")
+					and hit:GetAttribute("OwnerId") == userId
+					and hit:GetAttribute("ToyRarity") ~= nil then
+					hit.AssemblyLinearVelocity = Vector3.zero
+					_CollectionService.OnToyCollected(hit)
+				end
+			end)
+		end
+	end
+
+	print("Appended", count, "conveyor segments for floor plot", userId)
+end
+
 function ConveyorService.StopConveyors(userId)
 	if _heartbeats[userId] then
 		_heartbeats[userId]:Disconnect()

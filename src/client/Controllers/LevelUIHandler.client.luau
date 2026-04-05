@@ -12,6 +12,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player    = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
 
+local PrestigeConfig     = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PrestigeConfig"))
+
 local RemoteInterface    = ReplicatedStorage:WaitForChild("RemoteInterface")
 local onLevelChanged     = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
 local onPrestigeChanged  = RemoteInterface:WaitForChild("Events"):WaitForChild("OnPrestigeChanged")
@@ -82,7 +84,7 @@ end
 player.CharacterAdded:Connect(attachBillboard)
 
 -- ─── Barre EXP full width en bas de l'écran ──────────────────────────────────
-local BAR_HEIGHT = 8
+local BAR_HEIGHT = 12
 
 local expGui = Instance.new("ScreenGui")
 expGui.Name           = "ExpBarUI"
@@ -103,17 +105,29 @@ barBg.Parent            = expGui
 local barFill = Instance.new("Frame")
 barFill.Name             = "Fill"
 barFill.Size             = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(80, 160, 255)
+barFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 barFill.BorderSizePixel  = 0
 barFill.Parent           = barBg
 
 local gradient = Instance.new("UIGradient")
 gradient.Color    = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 130, 255)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(130, 200, 255)),
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 120, 0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0)),
 })
 gradient.Rotation = 0
 gradient.Parent   = barFill
+
+-- Ticks à 25 %, 50 %, 75 %
+for _, pct in ipairs({ 0.20, 0.40, 0.60, 0.80 }) do
+	local tick = Instance.new("Frame")
+	tick.Size                   = UDim2.new(0, 3, 1, 0)
+	tick.Position               = UDim2.new(pct, -1, 0, 0)
+	tick.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+	tick.BackgroundTransparency = 0
+	tick.BorderSizePixel        = 0
+	tick.ZIndex                 = 3
+	tick.Parent                 = barBg
+end
 
 local barLabel = Instance.new("TextLabel")
 barLabel.Size                   = UDim2.new(1, 0, 1, 0)
@@ -121,17 +135,22 @@ barLabel.BackgroundTransparency = 1
 barLabel.Text                   = ""
 barLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 barLabel.Font                   = Enum.Font.GothamBold
-barLabel.TextSize               = 7
+barLabel.TextSize               = 10
 barLabel.TextXAlignment         = Enum.TextXAlignment.Center
 barLabel.TextYAlignment         = Enum.TextYAlignment.Center
 barLabel.ZIndex                 = 2
 barLabel.Parent                 = barBg
 
 -- ─── Mise à jour de l'affichage ───────────────────────────────────────────────
+local MAX_LEVEL = PrestigeConfig and PrestigeConfig.MaxLevel or 50
+
 local function updateUI(level, exp, expForNext)
 	levelLabel.Text = "Niveau " .. tostring(level)
 
-	if expForNext and expForNext > 0 then
+	if level >= MAX_LEVEL then
+		barFill.Size  = UDim2.new(1, 0, 1, 0)
+		barLabel.Text = "MAX"
+	elseif expForNext and expForNext > 0 then
 		local ratio = math.clamp(exp / expForNext, 0, 1)
 		barFill.Size  = UDim2.new(ratio, 0, 1, 0)
 		barLabel.Text = string.format("%d / %d EXP", exp, expForNext)

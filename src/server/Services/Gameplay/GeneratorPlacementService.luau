@@ -297,6 +297,54 @@ local function createGeneratorVisual(slotData, rarity, modelName, revenuePerSeco
 	return part
 end
 
+-- Initialise les socles générateurs depuis un plot donné directement (utilisé pour les étages)
+-- Même logique que InitializePlotSlots mais sans passer par PlotService
+-- @param userId : number
+-- @param plot   : Model - Le plot d'étage à initialiser
+function GeneratorPlacementService.InitializeSlotsFromPlot(userId, plot)
+	local slotsFolder = plot:FindFirstChild("GeneratorSlots")
+	if not slotsFolder then
+		warn("GeneratorSlots not found in floor plot for userId:", userId)
+		return
+	end
+
+	for _, slotModel in ipairs(slotsFolder:GetChildren()) do
+		if not slotModel:IsA("Model") or not slotModel.PrimaryPart then continue end
+
+		for _, existing in ipairs(slotModel:GetDescendants()) do
+			if existing:IsA("ProximityPrompt") then existing:Destroy() end
+		end
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText            = "Poser l'oeuf"
+		prompt.ObjectText            = slotModel.Name
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight   = false
+		prompt.HoldDuration          = 0
+		prompt.Enabled               = true
+		prompt.Parent                = slotModel.PrimaryPart
+
+		local slotKey = userId .. "_" .. slotModel.Name
+		_generatorSlots[slotKey] = {
+			Model               = slotModel,
+			Prompt              = prompt,
+			Occupied            = false,
+			GeneratorPart       = nil,
+			PlacementConnection = nil,
+			PickupConnection    = nil,
+			UserId              = userId,
+		}
+
+		_generatorSlots[slotKey].PlacementConnection = prompt.Triggered:Connect(function(player)
+			if player.UserId == userId then
+				GeneratorPlacementService.OnSlotTriggered(player, slotModel)
+			end
+		end)
+	end
+
+	print("Initialized", #slotsFolder:GetChildren(), "generator slots for floor plot", userId)
+end
+
 -- ── Initialise les socles générateurs du plot d'un joueur ────────────────────
 function GeneratorPlacementService.InitializePlotSlots(userId)
 	local plot = PlotService.GetPlot(userId)
@@ -576,6 +624,15 @@ function GeneratorPlacementService.PickupGenerator(userId, slotName, player)
 	_PlayerDataService.AddBrainrot(userId, brainrotName, brainrotModel, brainrotRarity, brainrotRevenue, brainrotVariant)
 
 	notifyTotalRevenue(userId)
+end
+
+-- Retourne un brainrot aléatoire depuis la pool d'une rareté donnée
+-- @param rarity : string
+-- @return table { Name, ModelName, RevenuePerSecond } ou nil si pool vide
+function GeneratorPlacementService.GetRandomBrainrot(rarity)
+	local pool = _dynamicPools[rarity]
+	if not pool or #pool == 0 then return nil end
+	return pool[math.random(1, #pool)]
 end
 
 -- Appelé depuis PlayerLifecycleHandler avec un délai pour sync initial
