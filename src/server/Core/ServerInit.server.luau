@@ -47,6 +47,18 @@ getOrCreate(Events, "RemoteEvent", "OnLevelChanged")      -- level, exp, expForN
 getOrCreate(Events, "RemoteEvent", "OnPrestigeChanged")   -- prestigeLevel, isMasterPrestige
 getOrCreate(Events, "RemoteEvent", "TeleportRequest")     -- destination : string
 
+-- ─── Trade events ───────────────────────────────────────────────────────────
+getOrCreate(Events, "RemoteEvent", "SendTradeRequest")    -- targetUserId
+getOrCreate(Events, "RemoteEvent", "TradeInviteReceived") -- fromUserId, fromName  (→ client)
+getOrCreate(Events, "RemoteEvent", "TradeInviteResponse") -- accepted : bool
+getOrCreate(Events, "RemoteEvent", "TradeInviteDeclined") -- declinedByName        (→ client)
+getOrCreate(Events, "RemoteEvent", "TradeAddBrainrot")    -- brainrotName
+getOrCreate(Events, "RemoteEvent", "TradeRemoveBrainrot") -- brainrotName
+getOrCreate(Events, "RemoteEvent", "TradeSetMoney")       -- amount
+getOrCreate(Events, "RemoteEvent", "TradeConfirm")
+getOrCreate(Events, "RemoteEvent", "TradeCancel")
+getOrCreate(Events, "RemoteEvent", "TradeStateUpdate")    -- state packet (→ client)
+
 -- ─── Fonctions existantes ───────────────────────────────────────────────────
 getOrCreate(Functions, "RemoteFunction", "PurchaseSpawner")
 getOrCreate(Functions, "RemoteFunction", "PlaceSpawner")
@@ -113,6 +125,7 @@ local RemoteFunctionHandler    = require(script.Parent.Parent.Handlers.RemoteFun
 local AutoSaveHandler          = require(script.Parent.Parent.Handlers.AutoSaveHandler)
 local DebugClearHandler        = require(script.Parent.Parent.Handlers.DebugClearHandler)
 local TeleportHandler          = require(script.Parent.Parent.Handlers.TeleportHandler)
+local TradeService             = require(script.Parent.Parent.Services.Gameplay.TradeService)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -168,6 +181,9 @@ safeInit("DebugClearHandler", function()
 end)
 safeInit("TeleportHandler", function()
 	TeleportHandler.Init()
+end)
+safeInit("TradeService", function()
+	TradeService.Init(PlayerDataService, PlacementService)
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──
