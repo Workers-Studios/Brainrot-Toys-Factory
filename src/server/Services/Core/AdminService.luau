@@ -21,7 +21,8 @@ local _GeneratorPlacementService   = nil
 
 -- Users Admin ID
 local ADMIN_USER_IDS = {
-	10244275965, -- DorianABDS 
+	10244275965, -- DorianABDS
+	3186355229, -- Cayan
 }
 
 -- Checks if player is admin
