@@ -830,16 +830,16 @@ end)
 
 -- ─── Remote Event Listeners ───────────────────────────────────────────────────
 
-evInviteReceived:Connect(function(fromUserId, fromName)
+evInviteReceived.OnClientEvent:Connect(function(fromUserId, fromName)
 	inviteMsg.Text = fromName .. " wants to trade with you!"
 	invitePopup.Visible = true
 end)
 
-evInviteDeclined:Connect(function(declinedByName)
+evInviteDeclined.OnClientEvent:Connect(function(declinedByName)
 	showNotif(declinedByName .. " declined your trade request.", C.red)
 end)
 
-evStateUpdate:Connect(function(state)
+evStateUpdate.OnClientEvent:Connect(function(state)
 	renderState(state)
 end)
 
