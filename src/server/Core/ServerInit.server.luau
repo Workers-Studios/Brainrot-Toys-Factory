@@ -45,6 +45,7 @@ getOrCreate(Events, "RemoteEvent", "OnRevenuePerSecondChanged")
 -- ─── Nouveaux événements (Prestige & Niveau) ────────────────────────────────
 getOrCreate(Events, "RemoteEvent", "OnLevelChanged")      -- level, exp, expForNext
 getOrCreate(Events, "RemoteEvent", "OnPrestigeChanged")   -- prestigeLevel, isMasterPrestige
+getOrCreate(Events, "RemoteEvent", "TeleportRequest")     -- destination : string
 
 -- ─── Fonctions existantes ───────────────────────────────────────────────────
 getOrCreate(Functions, "RemoteFunction", "PurchaseSpawner")
@@ -111,6 +112,7 @@ local PlayerLifecycleHandler   = require(script.Parent.Parent.Handlers.PlayerLif
 local RemoteFunctionHandler    = require(script.Parent.Parent.Handlers.RemoteFunctionHandler)
 local AutoSaveHandler          = require(script.Parent.Parent.Handlers.AutoSaveHandler)
 local DebugClearHandler        = require(script.Parent.Parent.Handlers.DebugClearHandler)
+local TeleportHandler          = require(script.Parent.Parent.Handlers.TeleportHandler)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -163,6 +165,9 @@ safeInit("AutoSaveHandler", function()
 end)
 safeInit("DebugClearHandler", function()
 	DebugClearHandler.Init(PlayerDataService)
+end)
+safeInit("TeleportHandler", function()
+	TeleportHandler.Init()
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──
