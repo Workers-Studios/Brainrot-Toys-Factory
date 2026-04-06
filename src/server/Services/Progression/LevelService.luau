@@ -33,6 +33,12 @@ function LevelService.Init(PlayerDataService)
 	-- Re-synchronise les attributs à chaque respawn
 	Players.PlayerAdded:Connect(function(p)
 		p.CharacterAdded:Connect(function(character)
+			-- Hide default Roblox name overhead (replaced by custom billboard)
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.NameDisplayDistance = 0
+			end
+
 			task.wait(0.5)  -- laisser PlayerData se charger
 			local pd = _PlayerDataService.GetPlayerData(p.UserId)
 			if pd then

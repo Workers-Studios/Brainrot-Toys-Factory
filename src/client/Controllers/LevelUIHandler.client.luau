@@ -44,30 +44,32 @@ LevelFrame.Visible = false
 local function makeBillboard()
 	local bb = Instance.new("BillboardGui")
 	bb.Name         = "LevelBillboard"
-	bb.Size         = UDim2.new(0, 120, 0, 44)
+	bb.Size         = UDim2.new(0, 160, 0, 58)
 	bb.StudsOffset  = Vector3.new(0, 1.7, 0)
 	bb.AlwaysOnTop  = false
 	bb.MaxDistance  = 60
 	bb.ResetOnSpawn = false
 
+	-- Prestige (top)
 	local pLabel = Instance.new("TextLabel")
 	pLabel.Name                   = "PrestigeLabel"
-	pLabel.Size                   = UDim2.new(1, 0, 0.45, 0)
+	pLabel.Size                   = UDim2.new(1, 0, 0, 16)
 	pLabel.Position               = UDim2.new(0, 0, 0, 0)
 	pLabel.BackgroundTransparency = 1
 	pLabel.Text                   = ""
 	pLabel.TextColor3             = Color3.fromRGB(255, 215, 0)
 	pLabel.Font                   = Enum.Font.GothamBold
-	pLabel.TextSize               = 11
+	pLabel.TextSize               = 10
 	pLabel.TextStrokeTransparency = 0.4
 	pLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	pLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	pLabel.Parent                 = bb
 
+	-- Level (middle)
 	local lLabel = Instance.new("TextLabel")
 	lLabel.Name                   = "LevelLabel"
-	lLabel.Size                   = UDim2.new(1, 0, 0.55, 0)
-	lLabel.Position               = UDim2.new(0, 0, 0.45, 0)
+	lLabel.Size                   = UDim2.new(1, 0, 0, 22)
+	lLabel.Position               = UDim2.new(0, 0, 0, 16)
 	lLabel.BackgroundTransparency = 1
 	lLabel.Text                   = "Lv. ?"
 	lLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
@@ -78,7 +80,22 @@ local function makeBillboard()
 	lLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	lLabel.Parent                 = bb
 
-	return bb, lLabel, pLabel
+	-- Name (bottom)
+	local nLabel = Instance.new("TextLabel")
+	nLabel.Name                   = "NameLabel"
+	nLabel.Size                   = UDim2.new(1, 0, 0, 18)
+	nLabel.Position               = UDim2.new(0, 0, 0, 38)
+	nLabel.BackgroundTransparency = 1
+	nLabel.Text                   = ""
+	nLabel.TextColor3             = Color3.fromRGB(200, 220, 255)
+	nLabel.Font                   = Enum.Font.Gotham
+	nLabel.TextSize               = 12
+	nLabel.TextStrokeTransparency = 0.4
+	nLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+	nLabel.TextXAlignment         = Enum.TextXAlignment.Center
+	nLabel.Parent                 = bb
+
+	return bb, lLabel, pLabel, nLabel
 end
 
 local function refreshBillboard(character, lLabel, pLabel)
@@ -107,8 +124,14 @@ local function setupBillboard(character)
 	local old = head:FindFirstChild("LevelBillboard")
 	if old then old:Destroy() end
 
-	local bb, lLabel, pLabel = makeBillboard()
+	local bb, lLabel, pLabel, nLabel = makeBillboard()
 	bb.Parent = head
+
+	-- Set player display name (static, won't change)
+	local p = Players:GetPlayerFromCharacter(character)
+	if p then
+		nLabel.Text = p.DisplayName
+	end
 
 	refreshBillboard(character, lLabel, pLabel)
 
