@@ -532,6 +532,7 @@ local function triggerOption(action)
         evSellHeld:FireServer(npcType)
     elseif action == "SellAll" then
         evSellAll:FireServer(npcType)
+        closeDialogue()
     elseif action == "OpenSellUI" then
         openSellInventory()
     end
