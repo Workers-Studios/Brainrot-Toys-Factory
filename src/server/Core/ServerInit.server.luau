@@ -137,6 +137,7 @@ local TeleportHandler          = require(script.Parent.Parent.Handlers.TeleportH
 local TradeService             = require(script.Parent.Parent.Services.Gameplay.TradeService)
 local SellService              = require(script.Parent.Parent.Services.Gameplay.SellService)
 local NPCDialogueHandler       = require(script.Parent.Parent.Handlers.NPCDialogueHandler)
+local DebugClearHandler        = require(script.Parent.Parent.Handlers.DebugClearHandler)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -198,6 +199,9 @@ safeInit("SellService", function()
 end)
 safeInit("NPCDialogueHandler", function()
 	NPCDialogueHandler.Init(SellService)
+end)
+safeInit("DebugClearHandler", function()
+	DebugClearHandler.Init(PlayerDataService)
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──
