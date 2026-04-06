@@ -60,11 +60,24 @@ end
 
 -- ─── NPC Setup ────────────────────────────────────────────────────────────────
 
+-- Recherche récursive dans tout le workspace (gère les NPC dans des dossiers/modèles)
+local function findInWorkspace(name)
+    local found = workspace:FindFirstChild(name, true)
+    if found then return found end
+    -- Attendre jusqu'à 30s en re-cherchant chaque seconde
+    for _ = 1, 30 do
+        task.wait(1)
+        found = workspace:FindFirstChild(name, true)
+        if found then return found end
+    end
+    return nil
+end
+
 local function setupNPC(npcName, npcId, objectText)
     task.spawn(function()
-        local npc = workspace:WaitForChild(npcName, 30)
+        local npc = findInWorkspace(npcName)
         if not npc then
-            warn("[NPCDialogueHandler] NPC introuvable :", npcName)
+            warn("[NPCDialogueHandler] NPC introuvable après 30s :", npcName)
             return
         end
 
@@ -74,7 +87,18 @@ local function setupNPC(npcName, npcId, objectText)
             return
         end
 
-        local pp = ensureProximityPrompt(root, objectText)
+        -- Supprimer tout ProximityPrompt existant pour éviter les doublons
+        local existing = root:FindFirstChildOfClass("ProximityPrompt")
+        if existing then existing:Destroy() end
+
+        local pp = Instance.new("ProximityPrompt")
+        pp.ActionText            = "Parler"
+        pp.ObjectText            = objectText
+        pp.KeyboardKeyCode       = Enum.KeyCode.E
+        pp.HoldDuration          = 0
+        pp.MaxActivationDistance = 8
+        pp.Parent                = root
+
         pp.Triggered:Connect(function(player)
             getEv().OpenNPCDialogue:FireClient(player, npcId)
         end)
