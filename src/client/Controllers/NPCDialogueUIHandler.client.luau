@@ -15,6 +15,7 @@
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
 local TweenService      = game:GetService("TweenService")
 
@@ -629,5 +630,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     local idx = KEY_MAP[input.KeyCode]
     if idx and _currentConfig and _currentConfig.Options[idx] then
         triggerOption(_currentConfig.Options[idx].Action)
+    end
+end)
+
+-- ─── Fermeture automatique si le joueur se déplace ───────────────────────────
+
+RunService.Heartbeat:Connect(function()
+    if not dialoguePanel.Visible then return end
+    local character = player.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+        closeDialogue()
     end
 end)
