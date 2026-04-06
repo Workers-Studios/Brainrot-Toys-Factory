@@ -2,28 +2,27 @@
 	LevelUIHandler - Affichage du niveau et de la progression EXP
 
 	- LevelFrame (rectangle HUD) : caché, bouton Prestige reparenté dans HUD
-	- Overhead : ScreenGui positionné via WorldToViewportPoint (taille fixe au scroll)
-	- Barre EXP : full width, collée en bas de l'écran
+	- Niveau : BillboardGui au-dessus de la tête du joueur
+	- Barre EXP : full width, collée en bas de l'écran, créée par code
 ]]
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService        = game:GetService("RunService")
 
 local player    = Players.LocalPlayer
 local PlayerGui = player:WaitForChild("PlayerGui")
-local camera    = workspace.CurrentCamera
 
-local PrestigeConfig    = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PrestigeConfig"))
-local RemoteInterface   = ReplicatedStorage:WaitForChild("RemoteInterface")
-local onLevelChanged    = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
-local onPrestigeChanged = RemoteInterface:WaitForChild("Events"):WaitForChild("OnPrestigeChanged")
+local PrestigeConfig     = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PrestigeConfig"))
+
+local RemoteInterface    = ReplicatedStorage:WaitForChild("RemoteInterface")
+local onLevelChanged     = RemoteInterface:WaitForChild("Events"):WaitForChild("OnLevelChanged")
+local onPrestigeChanged  = RemoteInterface:WaitForChild("Events"):WaitForChild("OnPrestigeChanged")
 
 -- ─── HUD : cacher le LevelFrame, garder le bouton Prestige ───────────────────
-
 local HUD        = PlayerGui:WaitForChild("HUD")
 local LevelFrame = HUD:WaitForChild("LevelFrame")
 
+-- Récupérer le bouton Prestige avant de cacher le frame
 local prestigeButton = LevelFrame:FindFirstChild("PrestigeButton")
 	or LevelFrame:FindFirstChildWhichIsA("TextButton")
 	or LevelFrame:FindFirstChildWhichIsA("ImageButton")
@@ -32,79 +31,75 @@ if prestigeButton then
 	prestigeButton.Parent = HUD
 end
 
+-- Masquer tout le LevelFrame
 LevelFrame.Visible = false
 
--- ─── ScreenGui overhead (taille fixe quelle que soit la distance caméra) ─────
+-- ─── BillboardGui : niveau + nom au-dessus de la tête (tous les joueurs) ──────
 --
--- Utilise WorldToViewportPoint chaque RenderStepped pour positionner un Frame
--- en espace écran → la taille en pixels ne change pas au scroll.
+-- Les billboards sont créés côté client à partir des attributs character
+-- PlayerLevel / PlayerPrestige / PlayerIsMaster mis à jour par le serveur.
+-- Comme les attributs sont répliqués automatiquement, tous les clients voient
+-- les niveaux de tous les joueurs.
 
-local overheadGui = Instance.new("ScreenGui")
-overheadGui.Name           = "OverheadUI"
-overheadGui.ResetOnSpawn   = false
-overheadGui.IgnoreGuiInset = true
-overheadGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-overheadGui.Parent         = PlayerGui
+local function makeBillboard()
+	local bb = Instance.new("BillboardGui")
+	bb.Name         = "LevelBillboard"
+	bb.Size         = UDim2.new(0, 180, 0, 66)
+	bb.StudsOffset  = Vector3.new(0, 2.0, 0)
+	bb.AlwaysOnTop  = false
+	bb.MaxDistance  = 60
+	bb.ResetOnSpawn = false
 
--- { [userId] = { frame, lLabel, player } }
-local overheadData = {}
+	-- Level number (prestige emoji shown inline when applicable)
+	local lLabel = Instance.new("TextLabel")
+	lLabel.Name                   = "LevelLabel"
+	lLabel.Size                   = UDim2.new(1, 0, 0, 30)
+	lLabel.Position               = UDim2.new(0, 0, 0, 0)
+	lLabel.BackgroundTransparency = 1
+	lLabel.Text                   = "?"
+	lLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+	lLabel.Font                   = Enum.Font.GothamBold
+	lLabel.TextSize               = 24
+	lLabel.TextStrokeTransparency = 0.4
+	lLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+	lLabel.TextXAlignment         = Enum.TextXAlignment.Center
+	lLabel.Parent                 = bb
 
-local MAX_DIST   = 60   -- studs max pour afficher l'overhead
-local HEAD_ABOVE = Vector3.new(0, 2.6, 0)  -- offset au-dessus du centre de la tête
+	-- Display name (white)
+	local nLabel = Instance.new("TextLabel")
+	nLabel.Name                   = "NameLabel"
+	nLabel.Size                   = UDim2.new(1, 0, 0, 20)
+	nLabel.Position               = UDim2.new(0, 0, 0, 30)
+	nLabel.BackgroundTransparency = 1
+	nLabel.Text                   = ""
+	nLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+	nLabel.Font                   = Enum.Font.GothamBold
+	nLabel.TextSize               = 18
+	nLabel.TextStrokeTransparency = 0
+	nLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+	nLabel.TextXAlignment         = Enum.TextXAlignment.Center
+	nLabel.Parent                 = bb
 
-local function makeLabel(parent, name, size, posY, textSize, font, color, strokeT)
-	local lbl = Instance.new("TextLabel")
-	lbl.Name                   = name
-	lbl.Size                   = UDim2.new(1, 0, 0, size)
-	lbl.Position               = UDim2.new(0, 0, 0, posY)
-	lbl.BackgroundTransparency = 1
-	lbl.Text                   = ""
-	lbl.TextColor3             = color
-	lbl.TextTransparency       = 0
-	lbl.Font                   = font
-	lbl.TextSize               = textSize
-	lbl.TextStrokeTransparency = strokeT
-	lbl.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
-	lbl.TextXAlignment         = Enum.TextXAlignment.Center
-	lbl.Parent                 = parent
-	return lbl
+	-- @username (grayed out)
+	local uLabel = Instance.new("TextLabel")
+	uLabel.Name                   = "UsernameLabel"
+	uLabel.Size                   = UDim2.new(1, 0, 0, 14)
+	uLabel.Position               = UDim2.new(0, 0, 0, 50)
+	uLabel.BackgroundTransparency = 1
+	uLabel.Text                   = ""
+	uLabel.TextColor3             = Color3.fromRGB(155, 158, 168)
+	uLabel.TextTransparency       = 0
+	uLabel.Font                   = Enum.Font.Gotham
+	uLabel.TextSize               = 11
+	uLabel.TextStrokeTransparency = 0
+	uLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+	uLabel.TextXAlignment         = Enum.TextXAlignment.Center
+	uLabel.Parent                 = bb
+
+	return bb, lLabel, nLabel, uLabel
 end
 
-local function createOverhead(p)
-	-- Nettoyer l'ancien si présent
-	if overheadData[p.UserId] then
-		overheadData[p.UserId].frame:Destroy()
-		overheadData[p.UserId] = nil
-	end
-
-	local frame = Instance.new("Frame")
-	frame.Name               = "Overhead_" .. p.UserId
-	frame.Size               = UDim2.new(0, 220, 0, 70)
-	frame.AnchorPoint        = Vector2.new(0.5, 1)
-	frame.BackgroundTransparency = 1
-	frame.Visible            = false
-	frame.Parent             = overheadGui
-
-	-- Niveau (+ emoji prestige inline)
-	local lLabel = makeLabel(frame, "LevelLabel", 28, 0,
-		24, Enum.Font.GothamBold, Color3.fromRGB(255, 255, 255), 0.4)
-
-	-- DisplayName
-	local nLabel = makeLabel(frame, "NameLabel", 22, 28,
-		18, Enum.Font.GothamBold, Color3.fromRGB(255, 255, 255), 0)
-
-	-- @username
-	local uLabel = makeLabel(frame, "UsernameLabel", 16, 50,
-		11, Enum.Font.Gotham, Color3.fromRGB(155, 158, 168), 0)
-
-	nLabel.Text = p.DisplayName
-	uLabel.Text = "@ " .. p.Name
-
-	overheadData[p.UserId] = { frame = frame, lLabel = lLabel, player = p }
-	return lLabel
-end
-
-local function refreshLevel(character, lLabel)
+local function refreshBillboard(character, lLabel)
 	local level    = character:GetAttribute("PlayerLevel")    or 1
 	local prestige = character:GetAttribute("PlayerPrestige") or 0
 	local isMaster = character:GetAttribute("PlayerIsMaster") or false
@@ -118,73 +113,46 @@ local function refreshLevel(character, lLabel)
 	end
 end
 
-local function connectCharacter(p, character, lLabel)
-	refreshLevel(character, lLabel)
+local function setupBillboard(character)
+	local head = character:WaitForChild("Head", 10)
+	if not head then return end
+
+	local old = head:FindFirstChild("LevelBillboard")
+	if old then old:Destroy() end
+
+	local bb, lLabel, nLabel, uLabel = makeBillboard()
+	bb.Parent = head
+
+	local p = Players:GetPlayerFromCharacter(character)
+	if p then
+		nLabel.Text = p.DisplayName
+		uLabel.Text = "@ " .. p.Name
+	end
+
+	refreshBillboard(character, lLabel)
+
 	character:GetAttributeChangedSignal("PlayerLevel"):Connect(function()
-		refreshLevel(character, lLabel)
+		refreshBillboard(character, lLabel)
 	end)
 	character:GetAttributeChangedSignal("PlayerPrestige"):Connect(function()
-		refreshLevel(character, lLabel)
+		refreshBillboard(character, lLabel)
 	end)
 	character:GetAttributeChangedSignal("PlayerIsMaster"):Connect(function()
-		refreshLevel(character, lLabel)
+		refreshBillboard(character, lLabel)
 	end)
 end
 
-local function setupPlayer(p)
-	local lLabel = createOverhead(p)
-
-	if p.Character then
-		connectCharacter(p, p.Character, lLabel)
-	end
-
-	p.CharacterAdded:Connect(function(character)
-		-- Re-créer l'overhead pour récupérer un lLabel frais après respawn
-		local newLLabel = createOverhead(p)
-		connectCharacter(p, character, newLLabel)
-	end)
-end
-
--- Init joueurs présents
+-- Initialiser pour tous les joueurs déjà présents
 for _, p in ipairs(Players:GetPlayers()) do
-	setupPlayer(p)
+	if p.Character then setupBillboard(p.Character) end
+	p.CharacterAdded:Connect(setupBillboard)
 end
-Players.PlayerAdded:Connect(setupPlayer)
-Players.PlayerRemoving:Connect(function(p)
-	if overheadData[p.UserId] then
-		overheadData[p.UserId].frame:Destroy()
-		overheadData[p.UserId] = nil
-	end
-end)
-
--- ─── Mise à jour des positions chaque frame ───────────────────────────────────
-
-RunService.RenderStepped:Connect(function()
-	for _, data in pairs(overheadData) do
-		local p   = data.player
-		local chr = p.Character
-		if not chr then data.frame.Visible = false; continue end
-
-		local head = chr:FindFirstChild("Head")
-		if not head then data.frame.Visible = false; continue end
-
-		local dist = (camera.CFrame.Position - head.Position).Magnitude
-		if dist > MAX_DIST then data.frame.Visible = false; continue end
-
-		local screenPos, onScreen, depth =
-			camera:WorldToViewportPoint(head.Position + HEAD_ABOVE)
-
-		if onScreen and depth > 0 then
-			data.frame.Visible  = true
-			data.frame.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y)
-		else
-			data.frame.Visible = false
-		end
-	end
+Players.PlayerAdded:Connect(function(p)
+	p.CharacterAdded:Connect(setupBillboard)
+	if p.Character then setupBillboard(p.Character) end
 end)
 
 -- ─── Barre EXP full width en bas de l'écran ──────────────────────────────────
-
 local BAR_HEIGHT = 12
 
 local expGui = Instance.new("ScreenGui")
@@ -211,13 +179,14 @@ barFill.BorderSizePixel  = 0
 barFill.Parent           = barBg
 
 local gradient = Instance.new("UIGradient")
-gradient.Color = ColorSequence.new({
+gradient.Color    = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 120, 0)),
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0)),
 })
 gradient.Rotation = 0
 gradient.Parent   = barFill
 
+-- Ticks à 25 %, 50 %, 75 %
 for _, pct in ipairs({ 0.20, 0.40, 0.60, 0.80 }) do
 	local tick = Instance.new("Frame")
 	tick.Size                   = UDim2.new(0, 3, 1, 0)
@@ -241,8 +210,7 @@ barLabel.TextYAlignment         = Enum.TextYAlignment.Center
 barLabel.ZIndex                 = 2
 barLabel.Parent                 = barBg
 
--- ─── Mise à jour de la barre EXP ─────────────────────────────────────────────
-
+-- ─── Mise à jour de l'affichage ───────────────────────────────────────────────
 local MAX_LEVEL = PrestigeConfig and PrestigeConfig.MaxLevel or 50
 
 local function updateUI(level, exp, expForNext)
@@ -259,8 +227,12 @@ local function updateUI(level, exp, expForNext)
 	end
 end
 
+-- ─── Connexion aux événements serveur ────────────────────────────────────────
 onLevelChanged.OnClientEvent:Connect(function(level, exp, expForNext)
 	updateUI(level, exp, expForNext)
 end)
 
-onPrestigeChanged.OnClientEvent:Connect(function() end)
+onPrestigeChanged.OnClientEvent:Connect(function(prestigeLevel, isMasterPrestige)
+	-- Billboard updates are handled via character attributes (replicated by server)
+	-- Nothing to do here for the overhead display
+end)
