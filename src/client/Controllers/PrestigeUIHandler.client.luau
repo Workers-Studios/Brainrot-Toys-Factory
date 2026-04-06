@@ -132,9 +132,10 @@ local function togglePrestigeUI()
 end
 
 -- ─── Événements serveur ───────────────────────────────────────────────────────
-onPrestigeChanged.OnClientEvent:Connect(function(prestigeLevel, _isMaster)
+onPrestigeChanged.OnClientEvent:Connect(function(prestigeLevel, isMaster)
 	currentPrestige = prestigeLevel
-	prestigeCounter.Text = prestigeCounter.Text:gsub("%[%d+%]", "[" .. prestigeLevel .. "]")
+	local label = isMaster and "[MAX]" or ("[" .. prestigeLevel .. "]")
+	prestigeCounter.Text = prestigeCounter.Text:gsub("%[.-%]", label)
 end)
 
 onLevelChanged.OnClientEvent:Connect(function(_level, _exp, _expForNext)
