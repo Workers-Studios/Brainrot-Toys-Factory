@@ -60,20 +60,21 @@ end
 
 -- ─── NPC Setup ────────────────────────────────────────────────────────────────
 
-local function setupNPC(npcName, npcId, objectText)
-    local npc = workspace:FindFirstChild(npcName)
-    if not npc then
-        warn("[NPCDialogueHandler] NPC introuvable :", npcName)
-        return
-    end
+local NPC_FOLDER = "NPCVendors"
 
+-- Prefixes to match + associated npcId and prompt text
+local NPC_TYPES = {
+    { prefix = "BrainrotPNJ", npcId = "BrainrotPNJ", objectText = "Marchand Brainrot" },
+    { prefix = "SpawnerPNJ",  npcId = "SpawnerPNJ",  objectText = "Marchand Spawner"  },
+}
+
+local function setupNPC(npc, npcId, objectText)
     local root = getRootPart(npc)
     if not root then
-        warn("[NPCDialogueHandler] Pas de BasePart sur :", npcName)
+        warn("[NPCDialogueHandler] No BasePart on:", npc.Name)
         return
     end
 
-    -- Supprimer tout ProximityPrompt existant pour éviter les doublons
     local existing = root:FindFirstChildOfClass("ProximityPrompt")
     if existing then existing:Destroy() end
 
@@ -90,7 +91,24 @@ local function setupNPC(npcName, npcId, objectText)
         getEv().OpenNPCDialogue:FireClient(player, npcId)
     end)
 
-    print("✅ [NPCDialogueHandler]", npcName, "prêt")
+    print("✅ [NPCDialogueHandler]", npc.Name, "ready")
+end
+
+local function setupAllNPCs()
+    local folder = workspace:FindFirstChild(NPC_FOLDER)
+    if not folder then
+        warn("[NPCDialogueHandler] Folder not found:", NPC_FOLDER)
+        return
+    end
+
+    for _, child in ipairs(folder:GetChildren()) do
+        for _, npcType in ipairs(NPC_TYPES) do
+            if child.Name:sub(1, #npcType.prefix) == npcType.prefix then
+                setupNPC(child, npcType.npcId, npcType.objectText)
+                break
+            end
+        end
+    end
 end
 
 -- ─── Init ─────────────────────────────────────────────────────────────────────
@@ -98,9 +116,7 @@ end
 function NPCDialogueHandler.Init(SellService)
     _SellService = SellService
 
-    -- Attacher les PNJ
-    setupNPC("BrainrotPNJ", "BrainrotPNJ", "Marchand Brainrot")
-    setupNPC("SpawnerPNJ",  "SpawnerPNJ",  "Marchand Spawner")
+    setupAllNPCs()
 
     local events    = getEv()
     local functions = getFn()
