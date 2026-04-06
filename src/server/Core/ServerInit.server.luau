@@ -59,6 +59,13 @@ getOrCreate(Events, "RemoteEvent", "TradeConfirm")
 getOrCreate(Events, "RemoteEvent", "TradeCancel")
 getOrCreate(Events, "RemoteEvent", "TradeStateUpdate")    -- state packet (→ client)
 
+-- ─── NPC Dialogue events ────────────────────────────────────────────────────
+getOrCreate(Events,    "RemoteEvent",    "OpenNPCDialogue")  -- npcId         (→ client)
+getOrCreate(Events,    "RemoteEvent",    "NPCSellHeld")      -- npcType
+getOrCreate(Events,    "RemoteEvent",    "NPCSellAll")       -- npcType
+getOrCreate(Events,    "RemoteEvent",    "NPCSellItems")     -- npcType, items
+getOrCreate(Events,    "RemoteEvent",    "NPCSellResult")    -- success, money, msg (→ client)
+
 -- ─── Fonctions existantes ───────────────────────────────────────────────────
 getOrCreate(Functions, "RemoteFunction", "PurchaseSpawner")
 getOrCreate(Functions, "RemoteFunction", "PlaceSpawner")
@@ -66,6 +73,9 @@ getOrCreate(Functions, "RemoteFunction", "RequestPlayerData")
 
 -- ─── Nouvelle fonction (demande de prestige) ────────────────────────────────
 getOrCreate(Functions, "RemoteFunction", "RequestPrestige")
+
+-- ─── NPC sell inventory function ────────────────────────────────────────────
+getOrCreate(Functions, "RemoteFunction", "NPCGetSellInventory")
 
 -- ─── Admin ──────────────────────────────────────────────────────────────────
 getOrCreate(AdminFolder, "RemoteFunction", "IsAdmin")
@@ -126,6 +136,8 @@ local AutoSaveHandler          = require(script.Parent.Parent.Handlers.AutoSaveH
 local DebugClearHandler        = require(script.Parent.Parent.Handlers.DebugClearHandler)
 local TeleportHandler          = require(script.Parent.Parent.Handlers.TeleportHandler)
 local TradeService             = require(script.Parent.Parent.Services.Gameplay.TradeService)
+local SellService              = require(script.Parent.Parent.Services.Gameplay.SellService)
+local NPCDialogueHandler       = require(script.Parent.Parent.Handlers.NPCDialogueHandler)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -184,6 +196,12 @@ safeInit("TeleportHandler", function()
 end)
 safeInit("TradeService", function()
 	TradeService.Init(PlayerDataService, PlacementService)
+end)
+safeInit("SellService", function()
+	SellService.Init(PlayerDataService, PlacementService, SpawnerConfig)
+end)
+safeInit("NPCDialogueHandler", function()
+	NPCDialogueHandler.Init(SellService)
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──
