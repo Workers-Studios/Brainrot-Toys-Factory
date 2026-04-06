@@ -38,7 +38,7 @@ local fnGetInventory = fn:WaitForChild("NPCGetSellInventory")
 
 local _currentNPCId   = nil   -- "BrainrotPNJ" | "SpawnerPNJ"
 local _currentConfig  = nil   -- config table du PNJ actif
-local _selectedItems  = {}    -- items cochés dans l'inventaire sell
+local _quantities     = {}    -- { [key] = { qty, max, priceEach, name, rarity } }
 
 -- ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -349,35 +349,62 @@ local function closeDialogue()
     invPanel.Visible      = false
     _currentNPCId  = nil
     _currentConfig = nil
-    _selectedItems = {}
+    _quantities    = {}
 end
 
 local function closeInvPanel()
     invPanel.Visible = false
-    _selectedItems   = {}
+    _quantities      = {}
 end
 
 invCloseBtn.MouseButton1Click:Connect(closeInvPanel)
 
--- Recalcule le total sélectionné
+-- Recalcule le total à partir des quantités
 local function recalcTotal()
     local total = 0
-    for _, item in pairs(_selectedItems) do
-        total = total + (item.price or 0)
+    for _, data in pairs(_quantities) do
+        total = total + data.qty * data.priceEach
     end
     invTotalLabel.Text = string.format("Total : $%d", total)
 end
 
--- Construit la liste de l'inventaire de vente
+-- Construit la liste de l'inventaire de vente (items stackés avec sélecteur de quantité)
 local function buildSellInventory(items, npcType)
-    -- Vider la liste
     for _, child in ipairs(invScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
-    _selectedItems = {}
+    _quantities = {}
     recalcTotal()
 
-    if #items == 0 then
+    -- Stacker les brainrots par nom côté client (serveur envoie une liste plate)
+    local stackedList = {}
+    if npcType == "brainrot" then
+        local stackMap   = {}
+        local stackOrder = {}
+        for _, item in ipairs(items) do
+            local k = item.Name
+            if not stackMap[k] then
+                stackMap[k] = { Name = item.Name, Rarity = item.Rarity, PriceEach = item.Price, Count = 0 }
+                table.insert(stackOrder, k)
+            end
+            stackMap[k].Count = stackMap[k].Count + 1
+        end
+        for _, k in ipairs(stackOrder) do
+            table.insert(stackedList, stackMap[k])
+        end
+    else
+        -- Spawners déjà groupés côté serveur
+        for _, item in ipairs(items) do
+            table.insert(stackedList, {
+                Name      = item.Rarity .. " Spawner",
+                Rarity    = item.Rarity,
+                PriceEach = item.PriceEach,
+                Count     = item.Count,
+            })
+        end
+    end
+
+    if #stackedList == 0 then
         local empty = Instance.new("Frame")
         empty.Size             = UDim2.new(1, 0, 0, 40)
         empty.BackgroundTransparency = 1
@@ -395,11 +422,23 @@ local function buildSellInventory(items, npcType)
         return
     end
 
-    for idx, item in ipairs(items) do
+    for idx, item in ipairs(stackedList) do
+        local key         = npcType == "brainrot" and item.Name or item.Rarity
         local rarityColor = RARITY_COLORS[item.Rarity] or C.text
+        local maxQty      = item.Count
 
+        -- Initialiser la quantité à 0
+        _quantities[key] = {
+            qty       = 0,
+            max       = maxQty,
+            priceEach = item.PriceEach,
+            name      = item.Name,
+            rarity    = item.Rarity,
+        }
+
+        local ROW_H = 60
         local row = Instance.new("Frame")
-        row.Size             = UDim2.new(1, 0, 0, 44)
+        row.Size             = UDim2.new(1, 0, 0, ROW_H)
         row.BackgroundColor3 = C.itemBg
         row.BorderSizePixel  = 0
         row.LayoutOrder      = idx
@@ -407,105 +446,176 @@ local function buildSellInventory(items, npcType)
         stroke(row, rarityColor, 1)
         row.Parent = invScroll
 
-        -- Checkbox
-        local checkBox = Instance.new("Frame")
-        checkBox.Size             = UDim2.new(0, 20, 0, 20)
-        checkBox.Position         = UDim2.new(0, 8, 0.5, -10)
-        checkBox.BackgroundColor3 = C.panel
-        checkBox.BorderSizePixel  = 0
-        corner(checkBox, 4)
-        stroke(checkBox, rarityColor)
-        checkBox.Parent = row
+        -- ── Ligne haute ──────────────────────────────────────────────────────
 
-        local checkMark = Instance.new("TextLabel")
-        checkMark.Size              = UDim2.fromScale(1, 1)
-        checkMark.BackgroundTransparency = 1
-        checkMark.Text              = ""
-        checkMark.TextColor3        = C.green
-        checkMark.Font              = Enum.Font.GothamBold
-        checkMark.TextSize          = 14
-        checkMark.ZIndex            = 2
-        checkMark.Parent            = checkBox
-
-        -- Nom
+        -- Nom (haut-gauche)
         local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size              = UDim2.new(1, -160, 0, 22)
-        nameLabel.Position          = UDim2.new(0, 36, 0, 4)
+        nameLabel.Size              = UDim2.new(1, -130, 0, 22)
+        nameLabel.Position          = UDim2.new(0, 8, 0, 5)
         nameLabel.BackgroundTransparency = 1
-        nameLabel.TextXAlignment    = Enum.TextXAlignment.Left
+        nameLabel.Text              = item.Name
+        nameLabel.TextColor3        = C.text
         nameLabel.Font              = Enum.Font.GothamBold
         nameLabel.TextSize          = 13
-        nameLabel.TextColor3        = C.text
+        nameLabel.TextXAlignment    = Enum.TextXAlignment.Left
         nameLabel.ZIndex            = 2
+        nameLabel.Parent            = row
 
-        -- Prix
-        local priceLabel = Instance.new("TextLabel")
-        priceLabel.Size              = UDim2.new(0, 110, 0, 22)
-        priceLabel.Position          = UDim2.new(1, -118, 0, 4)
-        priceLabel.BackgroundTransparency = 1
-        priceLabel.TextXAlignment    = Enum.TextXAlignment.Right
-        priceLabel.Font              = Enum.Font.GothamBold
-        priceLabel.TextSize          = 13
-        priceLabel.TextColor3        = C.gold
-        priceLabel.ZIndex            = 2
+        -- Total sélectionné (haut-droit, or)
+        local totalLabel = Instance.new("TextLabel")
+        totalLabel.Size              = UDim2.new(0, 118, 0, 22)
+        totalLabel.Position          = UDim2.new(1, -126, 0, 5)
+        totalLabel.BackgroundTransparency = 1
+        totalLabel.Text              = "$0"
+        totalLabel.TextColor3        = C.gold
+        totalLabel.Font              = Enum.Font.GothamBold
+        totalLabel.TextSize          = 13
+        totalLabel.TextXAlignment    = Enum.TextXAlignment.Right
+        totalLabel.ZIndex            = 2
+        totalLabel.Parent            = row
 
-        -- Sous-label rareté
+        -- ── Ligne basse ──────────────────────────────────────────────────────
+
+        -- Rareté (bas-gauche, coloré)
         local rarityLabel = Instance.new("TextLabel")
-        rarityLabel.Size             = UDim2.new(1, -160, 0, 16)
-        rarityLabel.Position         = UDim2.new(0, 36, 0, 24)
+        rarityLabel.Size             = UDim2.new(0, 90, 0, 16)
+        rarityLabel.Position         = UDim2.new(0, 8, 0, 33)
         rarityLabel.BackgroundTransparency = 1
-        rarityLabel.TextXAlignment   = Enum.TextXAlignment.Left
+        rarityLabel.Text             = item.Rarity
+        rarityLabel.TextColor3       = rarityColor
         rarityLabel.Font             = Enum.Font.Gotham
         rarityLabel.TextSize         = 11
-        rarityLabel.TextColor3       = rarityColor
+        rarityLabel.TextXAlignment   = Enum.TextXAlignment.Left
         rarityLabel.ZIndex           = 2
+        rarityLabel.Parent           = row
 
-        if npcType == "brainrot" then
-            nameLabel.Text   = item.Name
-            rarityLabel.Text = item.Rarity
-            priceLabel.Text  = string.format("$%d", item.Price)
-        else
-            nameLabel.Text   = item.Rarity .. " Spawner"
-            rarityLabel.Text = string.format("×%d  •  $%d/u", item.Count, item.PriceEach)
-            priceLabel.Text  = string.format("$%d", item.Count * item.PriceEach)
+        -- Possédé (bas-gauche après rareté)
+        local ownedLabel = Instance.new("TextLabel")
+        ownedLabel.Size              = UDim2.new(0, 100, 0, 16)
+        ownedLabel.Position          = UDim2.new(0, 104, 0, 34)
+        ownedLabel.BackgroundTransparency = 1
+        ownedLabel.Text              = "×" .. maxQty .. " possédé" .. (maxQty > 1 and "s" or "")
+        ownedLabel.TextColor3        = C.subtext
+        ownedLabel.Font              = Enum.Font.Gotham
+        ownedLabel.TextSize          = 11
+        ownedLabel.TextXAlignment    = Enum.TextXAlignment.Left
+        ownedLabel.ZIndex            = 2
+        ownedLabel.Parent            = row
+
+        -- Prix unitaire (bas, avant les contrôles)
+        local priceEachLabel = Instance.new("TextLabel")
+        priceEachLabel.Size              = UDim2.new(0, 80, 0, 16)
+        priceEachLabel.Position          = UDim2.new(1, -212, 0, 34)
+        priceEachLabel.BackgroundTransparency = 1
+        priceEachLabel.Text              = string.format("$%d/u", item.PriceEach)
+        priceEachLabel.TextColor3        = C.subtext
+        priceEachLabel.Font              = Enum.Font.Gotham
+        priceEachLabel.TextSize          = 11
+        priceEachLabel.TextXAlignment    = Enum.TextXAlignment.Right
+        priceEachLabel.ZIndex            = 2
+        priceEachLabel.Parent            = row
+
+        -- Bouton −
+        local minusBtn = Instance.new("TextButton")
+        minusBtn.Size             = UDim2.new(0, 26, 0, 24)
+        minusBtn.Position         = UDim2.new(1, -122, 0, 29)
+        minusBtn.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+        minusBtn.Text             = "−"
+        minusBtn.TextColor3       = Color3.new(1, 1, 1)
+        minusBtn.Font             = Enum.Font.GothamBold
+        minusBtn.TextSize         = 16
+        minusBtn.AutoButtonColor  = false
+        minusBtn.ZIndex           = 3
+        corner(minusBtn, 4)
+        minusBtn.Parent = row
+
+        -- TextBox quantité
+        local qtyBox = Instance.new("TextBox")
+        qtyBox.Size             = UDim2.new(0, 44, 0, 24)
+        qtyBox.Position         = UDim2.new(1, -94, 0, 29)
+        qtyBox.BackgroundColor3 = C.panel
+        qtyBox.Text             = "0"
+        qtyBox.TextColor3       = C.text
+        qtyBox.Font             = Enum.Font.GothamBold
+        qtyBox.TextSize         = 13
+        qtyBox.TextXAlignment   = Enum.TextXAlignment.Center
+        qtyBox.ClearTextOnFocus = false
+        qtyBox.ZIndex           = 3
+        corner(qtyBox, 4)
+        stroke(qtyBox, C.divider)
+        qtyBox.Parent = row
+
+        -- Bouton +
+        local plusBtn = Instance.new("TextButton")
+        plusBtn.Size             = UDim2.new(0, 26, 0, 24)
+        plusBtn.Position         = UDim2.new(1, -48, 0, 29)
+        plusBtn.BackgroundColor3 = Color3.fromRGB(30, 130, 60)
+        plusBtn.Text             = "+"
+        plusBtn.TextColor3       = Color3.new(1, 1, 1)
+        plusBtn.Font             = Enum.Font.GothamBold
+        plusBtn.TextSize         = 16
+        plusBtn.AutoButtonColor  = false
+        plusBtn.ZIndex           = 3
+        corner(plusBtn, 4)
+        plusBtn.Parent = row
+
+        -- ── Logique quantité ─────────────────────────────────────────────────
+
+        local function updateQty(newQty)
+            newQty = math.clamp(math.floor(tonumber(newQty) or 0), 0, maxQty)
+            _quantities[key].qty  = newQty
+            qtyBox.Text           = tostring(newQty)
+            totalLabel.Text       = string.format("$%d", newQty * item.PriceEach)
+            row.BackgroundColor3  = newQty > 0 and C.hover or C.itemBg
+            recalcTotal()
         end
 
-        nameLabel.Parent   = row
-        priceLabel.Parent  = row
-        rarityLabel.Parent = row
-
-        -- Bouton invisible pour sélection
-        local hitBtn = Instance.new("TextButton")
-        hitBtn.Size              = UDim2.fromScale(1, 1)
-        hitBtn.BackgroundTransparency = 1
-        hitBtn.Text              = ""
-        hitBtn.ZIndex            = 3
-        hitBtn.Parent            = row
-
-        local selected = false
-        local key = tostring(idx)
-
-        hitBtn.MouseButton1Click:Connect(function()
-            selected = not selected
-            if selected then
-                checkMark.Text = "✔"
-                row.BackgroundColor3 = C.hover
-                if npcType == "brainrot" then
-                    _selectedItems[key] = { name = item.Name, price = item.Price }
-                else
-                    _selectedItems[key] = {
-                        rarity = item.Rarity,
-                        count  = item.Count,
-                        price  = item.Count * item.PriceEach,
-                    }
-                end
-            else
-                checkMark.Text = ""
-                row.BackgroundColor3 = C.itemBg
-                _selectedItems[key]  = nil
-            end
-            recalcTotal()
+        minusBtn.MouseButton1Click:Connect(function()
+            updateQty(_quantities[key].qty - 1)
         end)
+
+        plusBtn.MouseButton1Click:Connect(function()
+            updateQty(_quantities[key].qty + 1)
+        end)
+
+        qtyBox.FocusLost:Connect(function()
+            updateQty(qtyBox.Text)
+        end)
+
+        -- ── Item unique : remplacer les contrôles par un simple toggle ────────
+        if maxQty == 1 then
+            minusBtn.Visible = false
+            qtyBox.Visible   = false
+            plusBtn.Visible  = false
+
+            -- Petite coche visuelle à droite
+            local checkIcon = Instance.new("TextLabel")
+            checkIcon.Size              = UDim2.new(0, 24, 0, 24)
+            checkIcon.Position          = UDim2.new(1, -36, 0.5, -12)
+            checkIcon.BackgroundColor3  = C.panel
+            checkIcon.Text              = ""
+            checkIcon.TextColor3        = C.green
+            checkIcon.Font              = Enum.Font.GothamBold
+            checkIcon.TextSize          = 16
+            checkIcon.ZIndex            = 4
+            corner(checkIcon, 4)
+            stroke(checkIcon, rarityColor)
+            checkIcon.Parent = row
+
+            -- Bouton invisible sur toute la ligne pour toggle
+            local hitBtn = Instance.new("TextButton")
+            hitBtn.Size              = UDim2.fromScale(1, 1)
+            hitBtn.BackgroundTransparency = 1
+            hitBtn.Text              = ""
+            hitBtn.ZIndex            = 5
+            hitBtn.Parent            = row
+
+            hitBtn.MouseButton1Click:Connect(function()
+                local newQty = _quantities[key].qty == 0 and 1 or 0
+                updateQty(newQty)
+                checkIcon.Text = newQty == 1 and "✔" or ""
+            end)
+        end
     end
 end
 
@@ -553,23 +663,30 @@ invOKBtn.MouseButton1Click:Connect(function()
     if not _currentConfig then return end
     local npcType = _currentConfig.NPCType
 
-    local hasSelection = false
-    for _ in pairs(_selectedItems) do hasSelection = true; break end
-    if not hasSelection then
-        showNotif("Aucun item sélectionné.", C.red)
+    local hasQty = false
+    for _, data in pairs(_quantities) do
+        if data.qty > 0 then hasQty = true; break end
+    end
+    if not hasQty then
+        showNotif("Aucune quantité sélectionnée.", C.red)
         return
     end
 
     if npcType == "brainrot" then
+        -- Envoyer le nom une fois par unité (SellSelectedBrainrots attend une liste de noms)
         local names = {}
-        for _, item in pairs(_selectedItems) do
-            table.insert(names, item.name)
+        for _, data in pairs(_quantities) do
+            for _ = 1, data.qty do
+                table.insert(names, data.name)
+            end
         end
         evSellItems:FireServer(npcType, names)
     else
         local rarityList = {}
-        for _, item in pairs(_selectedItems) do
-            table.insert(rarityList, { rarity = item.rarity, count = item.count })
+        for _, data in pairs(_quantities) do
+            if data.qty > 0 then
+                table.insert(rarityList, { rarity = data.rarity, count = data.qty })
+            end
         end
         evSellItems:FireServer(npcType, rarityList)
     end
