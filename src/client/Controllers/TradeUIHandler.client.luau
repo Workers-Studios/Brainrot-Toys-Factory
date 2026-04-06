@@ -453,10 +453,6 @@ confirmBtn.ZIndex = 11
 cancelBtn2.ZIndex = 11
 
 confirmBtn.MouseButton1Click:Connect(function()
-	if not _tradeState then return end
-	local aEmpty = #_tradeState.mySide.brainrots == 0    and (_tradeState.mySide.money    or 0) == 0
-	local bEmpty = #_tradeState.theirSide.brainrots == 0 and (_tradeState.theirSide.money or 0) == 0
-	if aEmpty and bEmpty then return end
 	evConfirm:FireServer()
 end)
 cancelBtn2.MouseButton1Click:Connect(function()
@@ -777,25 +773,7 @@ local function renderState(state)
 	myMoneyBox.Visible      = canEdit
 	setMoneyBtn.Visible     = canEdit
 	confirmBtn.Visible      = canEdit
-
-	-- Griser le bouton Confirm si aucune des deux parties n'offre rien
-	local aEmpty = #state.mySide.brainrots == 0    and (state.mySide.money    or 0) == 0
-	local bEmpty = #state.theirSide.brainrots == 0 and (state.theirSide.money or 0) == 0
-	local tradeIsEmpty = aEmpty and bEmpty
-
-	if tradeIsEmpty then
-		confirmBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-		confirmBtn.TextColor3       = Color3.fromRGB(100, 100, 110)
-		confirmBtn.Text             = "✔  Confirm"
-	elseif state.mySide.confirmed then
-		confirmBtn.BackgroundColor3 = C.greenDim
-		confirmBtn.TextColor3       = Color3.new(1, 1, 1)
-		confirmBtn.Text             = "✔  Confirmed"
-	else
-		confirmBtn.BackgroundColor3 = C.green
-		confirmBtn.TextColor3       = Color3.new(1, 1, 1)
-		confirmBtn.Text             = "✔  Confirm"
-	end
+	confirmBtn.BackgroundColor3 = state.mySide.confirmed and C.greenDim or C.green
 
 	-- Timer overlay
 	if state.state == "confirming" then

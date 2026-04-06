@@ -332,11 +332,6 @@ function TradeService.Init(PlayerDataService, PlacementService)
 		local t   = _trades[tid];                 if not t or t.state ~= "active" then return end
 		local my  = getPlayerSide(t, player.UserId); if not my then return end
 
-		-- Refuser si aucune des deux parties n'offre quoi que ce soit
-		local aEmpty = #t.sideA.brainrots == 0 and t.sideA.money == 0
-		local bEmpty = #t.sideB.brainrots == 0 and t.sideB.money == 0
-		if aEmpty and bEmpty then return end
-
 		my.confirmed = true
 
 		if t.sideA.confirmed and t.sideB.confirmed then
