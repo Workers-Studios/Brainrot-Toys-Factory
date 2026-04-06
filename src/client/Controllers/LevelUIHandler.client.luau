@@ -75,7 +75,7 @@ local function makeBillboard()
 	nLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 	nLabel.Font                   = Enum.Font.GothamBold
 	nLabel.TextSize               = 18
-	nLabel.TextStrokeTransparency = 0.4
+	nLabel.TextStrokeTransparency = 0
 	nLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	nLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	nLabel.Parent                 = bb
@@ -87,11 +87,11 @@ local function makeBillboard()
 	uLabel.Position               = UDim2.new(0, 0, 0, 50)
 	uLabel.BackgroundTransparency = 1
 	uLabel.Text                   = ""
-	uLabel.TextColor3             = Color3.fromRGB(100, 102, 108)
+	uLabel.TextColor3             = Color3.fromRGB(155, 158, 168)
 	uLabel.TextTransparency       = 0
 	uLabel.Font                   = Enum.Font.Gotham
 	uLabel.TextSize               = 11
-	uLabel.TextStrokeTransparency = 0.5
+	uLabel.TextStrokeTransparency = 0
 	uLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	uLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	uLabel.Parent                 = bb
