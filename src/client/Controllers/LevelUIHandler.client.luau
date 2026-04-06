@@ -74,7 +74,7 @@ local function makeBillboard()
 	nLabel.Text                   = ""
 	nLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 	nLabel.Font                   = Enum.Font.GothamBold
-	nLabel.TextSize               = 14
+	nLabel.TextSize               = 18
 	nLabel.TextStrokeTransparency = 0.4
 	nLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	nLabel.TextXAlignment         = Enum.TextXAlignment.Center
@@ -126,7 +126,7 @@ local function setupBillboard(character)
 	local p = Players:GetPlayerFromCharacter(character)
 	if p then
 		nLabel.Text = p.DisplayName
-		uLabel.Text = "@" .. p.Name
+		uLabel.Text = "@ " .. p.Name
 	end
 
 	refreshBillboard(character, lLabel)
