@@ -34,7 +34,7 @@ end
 -- Masquer tout le LevelFrame
 LevelFrame.Visible = false
 
--- ─── BillboardGui : niveau + prestige au-dessus de la tête (tous les joueurs) ──
+-- ─── BillboardGui : niveau + nom au-dessus de la tête (tous les joueurs) ──────
 --
 -- Les billboards sont créés côté client à partir des attributs character
 -- PlayerLevel / PlayerPrestige / PlayerIsMaster mis à jour par le serveur.
@@ -44,75 +44,71 @@ LevelFrame.Visible = false
 local function makeBillboard()
 	local bb = Instance.new("BillboardGui")
 	bb.Name         = "LevelBillboard"
-	bb.Size         = UDim2.new(0, 160, 0, 58)
-	bb.StudsOffset  = Vector3.new(0, 1.7, 0)
+	bb.Size         = UDim2.new(0, 180, 0, 66)
+	bb.StudsOffset  = Vector3.new(0, 2.0, 0)
 	bb.AlwaysOnTop  = false
 	bb.MaxDistance  = 60
 	bb.ResetOnSpawn = false
 
-	-- Prestige (top)
-	local pLabel = Instance.new("TextLabel")
-	pLabel.Name                   = "PrestigeLabel"
-	pLabel.Size                   = UDim2.new(1, 0, 0, 16)
-	pLabel.Position               = UDim2.new(0, 0, 0, 0)
-	pLabel.BackgroundTransparency = 1
-	pLabel.Text                   = ""
-	pLabel.TextColor3             = Color3.fromRGB(255, 215, 0)
-	pLabel.Font                   = Enum.Font.GothamBold
-	pLabel.TextSize               = 10
-	pLabel.TextStrokeTransparency = 0.4
-	pLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
-	pLabel.TextXAlignment         = Enum.TextXAlignment.Center
-	pLabel.Parent                 = bb
-
-	-- Level (middle)
+	-- Level number (prestige emoji shown inline when applicable)
 	local lLabel = Instance.new("TextLabel")
 	lLabel.Name                   = "LevelLabel"
-	lLabel.Size                   = UDim2.new(1, 0, 0, 22)
-	lLabel.Position               = UDim2.new(0, 0, 0, 16)
+	lLabel.Size                   = UDim2.new(1, 0, 0, 30)
+	lLabel.Position               = UDim2.new(0, 0, 0, 0)
 	lLabel.BackgroundTransparency = 1
-	lLabel.Text                   = "Lv. ?"
+	lLabel.Text                   = "?"
 	lLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 	lLabel.Font                   = Enum.Font.GothamBold
-	lLabel.TextSize               = 14
+	lLabel.TextSize               = 24
 	lLabel.TextStrokeTransparency = 0.4
 	lLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	lLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	lLabel.Parent                 = bb
 
-	-- Name (bottom)
+	-- Display name (white)
 	local nLabel = Instance.new("TextLabel")
 	nLabel.Name                   = "NameLabel"
-	nLabel.Size                   = UDim2.new(1, 0, 0, 18)
-	nLabel.Position               = UDim2.new(0, 0, 0, 38)
+	nLabel.Size                   = UDim2.new(1, 0, 0, 20)
+	nLabel.Position               = UDim2.new(0, 0, 0, 30)
 	nLabel.BackgroundTransparency = 1
 	nLabel.Text                   = ""
-	nLabel.TextColor3             = Color3.fromRGB(200, 220, 255)
-	nLabel.Font                   = Enum.Font.Gotham
-	nLabel.TextSize               = 12
+	nLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+	nLabel.Font                   = Enum.Font.GothamBold
+	nLabel.TextSize               = 14
 	nLabel.TextStrokeTransparency = 0.4
 	nLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	nLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	nLabel.Parent                 = bb
 
-	return bb, lLabel, pLabel, nLabel
+	-- @username (grayed out)
+	local uLabel = Instance.new("TextLabel")
+	uLabel.Name                   = "UsernameLabel"
+	uLabel.Size                   = UDim2.new(1, 0, 0, 14)
+	uLabel.Position               = UDim2.new(0, 0, 0, 50)
+	uLabel.BackgroundTransparency = 1
+	uLabel.Text                   = ""
+	uLabel.TextColor3             = Color3.fromRGB(140, 145, 160)
+	uLabel.Font                   = Enum.Font.Gotham
+	uLabel.TextSize               = 11
+	uLabel.TextStrokeTransparency = 0.5
+	uLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+	uLabel.TextXAlignment         = Enum.TextXAlignment.Center
+	uLabel.Parent                 = bb
+
+	return bb, lLabel, nLabel, uLabel
 end
 
-local function refreshBillboard(character, lLabel, pLabel)
+local function refreshBillboard(character, lLabel)
 	local level    = character:GetAttribute("PlayerLevel")    or 1
 	local prestige = character:GetAttribute("PlayerPrestige") or 0
 	local isMaster = character:GetAttribute("PlayerIsMaster") or false
 
-	lLabel.Text = "Lv. " .. tostring(level)
-
 	if isMaster then
-		pLabel.Text       = "⭐ Maître Prestige"
-		pLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+		lLabel.Text = tostring(level) .. " ⭐"
 	elseif prestige > 0 then
-		pLabel.Text       = "Prestige " .. tostring(prestige)
-		pLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+		lLabel.Text = tostring(level) .. " 🌟"
 	else
-		pLabel.Text = ""
+		lLabel.Text = tostring(level)
 	end
 end
 
@@ -120,30 +116,28 @@ local function setupBillboard(character)
 	local head = character:WaitForChild("Head", 10)
 	if not head then return end
 
-	-- Supprimer un ancien billboard s'il reste
 	local old = head:FindFirstChild("LevelBillboard")
 	if old then old:Destroy() end
 
-	local bb, lLabel, pLabel, nLabel = makeBillboard()
+	local bb, lLabel, nLabel, uLabel = makeBillboard()
 	bb.Parent = head
 
-	-- Set player display name (static, won't change)
 	local p = Players:GetPlayerFromCharacter(character)
 	if p then
 		nLabel.Text = p.DisplayName
+		uLabel.Text = "@" .. p.Name
 	end
 
-	refreshBillboard(character, lLabel, pLabel)
+	refreshBillboard(character, lLabel)
 
-	-- Mise à jour dynamique via les attributs répliqués
 	character:GetAttributeChangedSignal("PlayerLevel"):Connect(function()
-		refreshBillboard(character, lLabel, pLabel)
+		refreshBillboard(character, lLabel)
 	end)
 	character:GetAttributeChangedSignal("PlayerPrestige"):Connect(function()
-		refreshBillboard(character, lLabel, pLabel)
+		refreshBillboard(character, lLabel)
 	end)
 	character:GetAttributeChangedSignal("PlayerIsMaster"):Connect(function()
-		refreshBillboard(character, lLabel, pLabel)
+		refreshBillboard(character, lLabel)
 	end)
 end
 
@@ -219,8 +213,6 @@ barLabel.Parent                 = barBg
 local MAX_LEVEL = PrestigeConfig and PrestigeConfig.MaxLevel or 50
 
 local function updateUI(level, exp, expForNext)
-	levelLabel.Text = "Niveau " .. tostring(level)
-
 	if level >= MAX_LEVEL then
 		barFill.Size  = UDim2.new(1, 0, 1, 0)
 		barLabel.Text = "MAX"
@@ -240,13 +232,6 @@ onLevelChanged.OnClientEvent:Connect(function(level, exp, expForNext)
 end)
 
 onPrestigeChanged.OnClientEvent:Connect(function(prestigeLevel, isMasterPrestige)
-	if isMasterPrestige then
-		prestigeLabel.Text      = "⭐ Maître Prestige"
-		prestigeLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-	elseif prestigeLevel and prestigeLevel > 0 then
-		prestigeLabel.Text      = "Prestige " .. tostring(prestigeLevel)
-		prestigeLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-	else
-		prestigeLabel.Text = ""
-	end
+	-- Billboard updates are handled via character attributes (replicated by server)
+	-- Nothing to do here for the overhead display
 end)
