@@ -83,6 +83,7 @@ local function setupNPC(npcName, npcId, objectText)
     pp.KeyboardKeyCode       = Enum.KeyCode.E
     pp.HoldDuration          = 0
     pp.MaxActivationDistance = 8
+    pp.RequiresLineOfSight   = false
     pp.Parent                = root
 
     pp.Triggered:Connect(function(player)
