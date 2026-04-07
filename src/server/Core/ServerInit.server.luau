@@ -77,6 +77,13 @@ getOrCreate(Functions, "RemoteFunction", "RequestPrestige")
 -- ─── NPC sell inventory function ────────────────────────────────────────────
 getOrCreate(Functions, "RemoteFunction", "NPCGetSellInventory")
 
+-- ─── Weapon events ───────────────────────────────────────────────────────────
+getOrCreate(Events,    "RemoteEvent",    "WeaponBuy")           -- client → server
+getOrCreate(Events,    "RemoteEvent",    "WeaponEquip")         -- client → server
+getOrCreate(Events,    "RemoteEvent",    "WeaponSwing")         -- client → server (victimUserId)
+getOrCreate(Events,    "RemoteEvent",    "WeaponBuyResult")     -- server → client
+getOrCreate(Functions, "RemoteFunction", "WeaponGetShopData")   -- client → server
+
 -- ─── Admin ──────────────────────────────────────────────────────────────────
 getOrCreate(AdminFolder, "RemoteFunction", "IsAdmin")
 getOrCreate(AdminFolder, "RemoteEvent",    "ExecuteCommand")
@@ -137,6 +144,8 @@ local TeleportHandler          = require(script.Parent.Parent.Handlers.TeleportH
 local TradeService             = require(script.Parent.Parent.Services.Gameplay.TradeService)
 local SellService              = require(script.Parent.Parent.Services.Gameplay.SellService)
 local NPCDialogueHandler       = require(script.Parent.Parent.Handlers.NPCDialogueHandler)
+local WeaponService            = require(script.Parent.Parent.Services.Gameplay.WeaponService)
+local WeaponHandler            = require(script.Parent.Parent.Handlers.WeaponHandler)
 
 -- ─── Wrapper d'init sécurisé ────────────────────────────────────────────────
 local function safeInit(name, fn)
@@ -198,6 +207,12 @@ safeInit("SellService", function()
 end)
 safeInit("NPCDialogueHandler", function()
 	NPCDialogueHandler.Init(SellService)
+end)
+safeInit("WeaponService", function()
+	WeaponService.Init(PlayerDataService)
+end)
+safeInit("WeaponHandler", function()
+	WeaponHandler.Init(WeaponService)
 end)
 
 -- ─── Envoi des données initiales de progression au joueur lors de la connexion ──

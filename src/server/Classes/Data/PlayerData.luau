@@ -65,6 +65,12 @@ function PlayerData.new(userId)
 	-- ─── Brainrots découverts (persistant, par variante) ─────────────────────
 	self.discoveredBrainrots = { Normal = {}, Gold = {}, Diamond = {} }
 
+	-- ─── Weapon inventory ────────────────────────────────────────────────────
+	self.weaponData = {
+		owned    = {},   -- liste des raretés possédées : { "Common", "Rare", ... }
+		equipped = nil,  -- rareté actuellement équipée (string ou nil)
+	}
+
 	return self
 end
 
@@ -90,6 +96,13 @@ function PlayerData.load(userId, savedData)
 	self.placedSpawners     = savedData.placedSpawners    or {}
 	self.placedGenerators   = savedData.placedGenerators  or {}
 	self.brainrotInventory   = savedData.brainrotInventory or {}
+
+	-- ─── Weapon inventory (rétrocompatibilité) ───────────────────────────────
+	local savedWeapon = savedData.weaponData or {}
+	self.weaponData = {
+		owned    = savedWeapon.owned    or {},
+		equipped = savedWeapon.equipped or nil,
+	}
 
 	-- Rétrocompatibilité : anciens comptes n'ont pas discoveredBrainrots
 	local saved = savedData.discoveredBrainrots or {}
@@ -118,6 +131,7 @@ function PlayerData:Serialize()
 		placedGenerators  = self.placedGenerators,
 		brainrotInventory    = self.brainrotInventory,
 		discoveredBrainrots  = self.discoveredBrainrots,
+		weaponData           = self.weaponData,
 	}
 end
 
