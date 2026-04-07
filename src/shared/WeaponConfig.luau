@@ -28,7 +28,7 @@ WeaponConfig.RarityData = {
 }
 
 WeaponConfig.Cooldown     = 0.5   -- secondes entre deux frappes
-WeaponConfig.HitDistance  = 6     -- studs max pour toucher un joueur
+WeaponConfig.HitDistance  = 15    -- studs max pour toucher un joueur
 WeaponConfig.ToolName     = "BaseballBat"
 
 WeaponConfig.PVPFolder    = "PvPZone"

@@ -120,7 +120,7 @@ end
 
 local cdFrame = Instance.new("Frame")
 cdFrame.Size             = UDim2.new(0, 160, 0, 36)
-cdFrame.Position         = UDim2.new(0.5, -80, 1, -80)
+cdFrame.Position         = UDim2.new(0.5, -80, 1, -160)
 cdFrame.BackgroundColor3 = C.panel
 cdFrame.BorderSizePixel  = 0
 cdFrame.Visible          = false
@@ -413,57 +413,17 @@ end)
 
 -- ─── Swing detection ──────────────────────────────────────────────────────────
 
-local function handleSwing(tool)
+-- Feedback visuel du cooldown uniquement (la frappe est détectée server-side via Touched)
+local function handleSwing()
     local now = tick()
     if now - _lastSwing < WeaponConfig.Cooldown then return end
     _lastSwing = now
 
-    -- Animation si présente dans le tool
-    local chr = player.Character
-    if chr then
-        local anim = tool:FindFirstChildOfClass("Animation")
-        local hum  = chr:FindFirstChildOfClass("Humanoid")
-        if anim and hum then
-            local animator = hum:FindFirstChildOfClass("Animator")
-            if animator then
-                local track = animator:LoadAnimation(anim)
-                track:Play()
-            end
-        end
-    end
-
-    -- Détection de la cible la plus proche dans HitDistance
-    local hrp = chr and chr:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local closest      = nil
-    local closestDist  = WeaponConfig.HitDistance
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Character then
-            local vHRP = p.Character:FindFirstChild("HumanoidRootPart")
-            if vHRP then
-                local dist = (vHRP.Position - hrp.Position).Magnitude
-                if dist <= closestDist then
-                    closestDist = dist
-                    closest     = p
-                end
-            end
-        end
-    end
-
-    if closest then
-        evSwing:FireServer(closest.UserId)
-    end
-
-    -- Mise à jour visuelle du cooldown
-    cdBar.Size             = UDim2.new(0, 0, 1, 0)
-    cdLabel.Text           = "⏳ Cooldown"
-    cdLabel.TextColor3     = C.gold
-
+    cdBar.Size         = UDim2.new(0, 0, 1, 0)
+    cdLabel.Text       = "⏳ Cooldown"
+    cdLabel.TextColor3 = C.gold
     TweenService:Create(cdBar, TweenInfo.new(WeaponConfig.Cooldown, Enum.EasingStyle.Linear),
         { Size = UDim2.new(1, 0, 1, 0) }):Play()
-
     task.delay(WeaponConfig.Cooldown, function()
         cdLabel.Text       = "⚡ Prêt"
         cdLabel.TextColor3 = Color3.new(1,1,1)
@@ -480,15 +440,14 @@ local function onCharacterAdded(chr)
             _weaponEquipped = true
             cdFrame.Visible = true
             if _swingConn then _swingConn:Disconnect() end
-            _swingConn = child.Activated:Connect(function()
-                handleSwing(child)
-            end)
+            _swingConn = child.Activated:Connect(handleSwing)
         end
     end)
     chr.ChildRemoved:Connect(function(child)
         if child:IsA("Tool") and child:GetAttribute("IsWeapon") then
             _weaponEquipped = false
             cdFrame.Visible = false
+            if _swingConn then _swingConn:Disconnect(); _swingConn = nil end
         end
     end)
 end

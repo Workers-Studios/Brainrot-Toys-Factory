@@ -93,6 +93,7 @@ function WeaponHandler.Init(WeaponService)
 
     -- RemoteEvent : frappe (client envoie l'UserId de la cible)
     getEvents().WeaponSwing.OnServerEvent:Connect(function(player, victimUserId)
+        print("[WeaponHandler] WeaponSwing reçu :", player.Name, "→", victimUserId)
         _WeaponService.ProcessHit(player, victimUserId)
     end)
 end

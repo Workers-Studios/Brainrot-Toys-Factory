@@ -49,8 +49,8 @@ local function isInsideZone(position)
     if not pvpZone then return false end
     local local_pos = pvpZone.CFrame:PointToObjectSpace(position)
     local s = pvpZone.Size
+    -- On ignore l'axe Y : la zone est au sol, les joueurs marchent dessus
     return math.abs(local_pos.X) <= s.X / 2
-       and math.abs(local_pos.Y) <= s.Y / 2
        and math.abs(local_pos.Z) <= s.Z / 2
 end
 
@@ -60,7 +60,13 @@ local function updateZoneMembership()
         if chr then
             local hrp = chr:FindFirstChild("HumanoidRootPart")
             if hrp then
-                inPVPZone[p.UserId] = isInsideZone(hrp.Position)
+                local wasIn = inPVPZone[p.UserId]
+                local nowIn = isInsideZone(hrp.Position)
+                inPVPZone[p.UserId] = nowIn
+                if nowIn ~= wasIn then
+                    print(string.format("[WeaponService] PvP zone: %s %s (pos Y=%.1f)",
+                        p.Name, nowIn and "ENTERED ✅" or "LEFT ❌", hrp.Position.Y))
+                end
             end
         end
     end
@@ -108,11 +114,53 @@ local function giveWeaponTool(player, rarity)
     tool:SetAttribute("IsWeapon",     true)
     tool:SetAttribute("WeaponRarity", rarity)
 
-    -- Supprimer les scripts (gardez animation et son)
-    for _, desc in ipairs(tool:GetDescendants()) do
-        if desc:IsA("Script") or desc:IsA("LocalScript") then
-            desc:Destroy()
-        end
+    -- Détection de frappe côté serveur via Touched sur le handle
+    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+    if handle then
+        handle.Touched:Connect(function(hit)
+            print("[WeaponService] Touched fired → hit:", hit.Name, "parent:", hit.Parent and hit.Parent.Name)
+
+            local victimChar = hit.Parent
+            if not victimChar then print("[WeaponService] pas de parent") return end
+
+            local victim = Players:GetPlayerFromCharacter(victimChar)
+            if not victim then print("[WeaponService] pas un joueur") return end
+            if victim == player then return end
+
+            print("[WeaponService] Victime trouvée:", victim.Name)
+
+            -- Cooldown
+            local now = tick()
+            if (now - (cooldowns[player.UserId] or 0)) < WeaponConfig.Cooldown then
+                print("[WeaponService] Cooldown actif")
+                return
+            end
+
+            -- Zone PvP
+            print(string.format("[WeaponService] Zone check → attacker=%s victim=%s",
+                tostring(inPVPZone[player.UserId]), tostring(inPVPZone[victim.UserId])))
+            if not inPVPZone[player.UserId] or not inPVPZone[victim.UserId] then
+                print("[WeaponService] Hors zone PvP, pas de ragdoll")
+                return
+            end
+
+            -- Données arme
+            if not _PlayerDataService then print("[WeaponService] pas de PlayerDataService") return end
+            local pd          = _PlayerDataService.GetPlayerData(player.UserId)
+            local equipRarity = pd and pd.weaponData and pd.weaponData.equipped
+            local rarityData  = equipRarity and WeaponConfig.RarityData[equipRarity]
+            if not rarityData then
+                print("[WeaponService] Pas de rarityData, equipped=", tostring(equipRarity))
+                return
+            end
+
+            local aHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if not aHRP then print("[WeaponService] pas de HRP attaquant") return end
+
+            cooldowns[player.UserId] = now
+            print(string.format("[WeaponService] HIT ✅ %s → %s (%s)", player.Name, victim.Name, equipRarity))
+            applyRagdoll(victim, aHRP, rarityData.Knockback, rarityData.RagdollDuration)
+        end)
     end
 
     local backpack = player:FindFirstChildOfClass("Backpack")
@@ -133,6 +181,15 @@ local function applyRagdoll(victim, attackerHRP, knockback, duration)
 
     ragdolled[victim.UserId] = true
 
+    -- Bloquer tous les dégâts dès maintenant (frappe + chute durant ragdoll)
+    local maxHp = hum.MaxHealth
+    local healthConn
+    healthConn = hum.HealthChanged:Connect(function(hp)
+        if hp < maxHp then
+            hum.Health = maxHp
+        end
+    end)
+
     -- Désactiver les Motor6D → membres indépendants (ragdoll visuel)
     local motors = {}
     for _, desc in ipairs(chr:GetDescendants()) do
@@ -145,13 +202,8 @@ local function applyRagdoll(victim, attackerHRP, knockback, duration)
     hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
     hum:SetStateEnabled(Enum.HumanoidStateType.Jumping,   false)
 
-    -- Empêcher la mort durant le ragdoll (dégâts de chute éventuels)
-    local healthConn
-    healthConn = hum.HealthChanged:Connect(function(hp)
-        if hp < hum.MaxHealth * 0.2 then
-            hum.Health = hum.MaxHealth
-        end
-    end)
+    -- Prendre le network ownership pour pouvoir appliquer la vélocité
+    hrp:SetNetworkOwner(nil)
 
     -- Direction de knockback (horizontal + légère composante verticale)
     local dir2D = Vector3.new(
@@ -179,10 +231,16 @@ local function applyRagdoll(victim, attackerHRP, knockback, duration)
             end
         end
 
-        hum.Health = hum.MaxHealth
+        hum.Health = maxHp
         hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
         hum:SetStateEnabled(Enum.HumanoidStateType.Jumping,   true)
         hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+
+        -- Rendre le network ownership au joueur
+        local victimPlayer = Players:GetPlayerFromCharacter(chr)
+        if victimPlayer then
+            hrp:SetNetworkOwner(victimPlayer)
+        end
 
         ragdolled[victim.UserId] = nil
     end)
@@ -191,15 +249,29 @@ end
 -- ─── Hit validation ───────────────────────────────────────────────────────────
 
 function WeaponService.ProcessHit(attacker, victimUserId)
-    if not _PlayerDataService then return false, "Service not ready" end
+    print("[WeaponService] ProcessHit appelé :", attacker and attacker.Name, "→", victimUserId)
+    if not _PlayerDataService then
+        warn("[WeaponService] _PlayerDataService nil !")
+        return false, "Service not ready"
+    end
 
     local victim = Players:GetPlayerByUserId(victimUserId)
     if not victim          then return false, "Target not found" end
     if victim == attacker  then return false, "Cannot hit self"  end
 
     -- Zone PvP
-    if not inPVPZone[attacker.UserId] then return false, "Attacker not in PvP zone" end
-    if not inPVPZone[victim.UserId]   then return false, "Victim not in PvP zone"   end
+    print(string.format("[WeaponService] ProcessHit: %s(inZone=%s) → %s(inZone=%s)",
+        attacker.Name, tostring(inPVPZone[attacker.UserId]),
+        victim.Name,   tostring(inPVPZone[victim.UserId])))
+
+    if not inPVPZone[attacker.UserId] then
+        warn("[WeaponService] BLOCKED: Attacker not in PvP zone →", attacker.Name)
+        return false, "Attacker not in PvP zone"
+    end
+    if not inPVPZone[victim.UserId] then
+        warn("[WeaponService] BLOCKED: Victim not in PvP zone →", victim.Name)
+        return false, "Victim not in PvP zone"
+    end
 
     -- Cooldown
     local now  = tick()
@@ -215,7 +287,9 @@ function WeaponService.ProcessHit(attacker, victimUserId)
     local vHRP = vChr:FindFirstChild("HumanoidRootPart")
     if not aHRP or not vHRP then return false, "HRP missing" end
 
-    if (aHRP.Position - vHRP.Position).Magnitude > WeaponConfig.HitDistance + 3 then
+    local dist = (aHRP.Position - vHRP.Position).Magnitude
+    if dist > WeaponConfig.HitDistance + 3 then
+        warn("[WeaponService] ProcessHit BLOCKED: Too far →", dist)
         return false, "Too far"
     end
 
@@ -224,13 +298,19 @@ function WeaponService.ProcessHit(attacker, victimUserId)
     if not pd then return false, "No player data" end
 
     local rarity = pd.weaponData and pd.weaponData.equipped
-    if not rarity then return false, "No weapon equipped" end
+    if not rarity then
+        warn("[WeaponService] ProcessHit BLOCKED: No weapon equipped →", attacker.Name)
+        return false, "No weapon equipped"
+    end
 
     local rarityData = WeaponConfig.RarityData[rarity]
     if not rarityData then return false, "Invalid rarity" end
 
     -- Appliquer le cooldown
     cooldowns[attacker.UserId] = now
+
+    print(string.format("[WeaponService] HIT ✅ %s → %s | rarity=%s | dist=%.1f",
+        attacker.Name, victim.Name, rarity, dist))
 
     -- Ragdoll + knockback
     applyRagdoll(victim, aHRP, rarityData.Knockback, rarityData.RagdollDuration)
